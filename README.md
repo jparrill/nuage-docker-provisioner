@@ -1,5 +1,5 @@
 # Nuage Docker Provisioner
-[![](https://images.microbadger.com/badges/license/padajuan/nuage-docker-provisioner.svg)](http://microbadger.com/images/padajuan/nuage-docker-provisioner)
+[![](https://images.microbadger.com/badges/version/padajuan/nuage-docker-provisioner.svg)](http://microbadger.com/images/padajuan/nuage-docker-provisioner "Get your own version badge on microbadger.com")
 [![](https://images.microbadger.com/badges/image/padajuan/nuage-docker-provisioner.svg)](http://microbadger.com/images/padajuan/nuage-docker-provisioner)
 
 This repository create a container that have some samples to be provisioned on a Openstack-Nuage infrastructure.
