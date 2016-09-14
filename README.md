@@ -1,6 +1,6 @@
 # Nuage Docker Provisioner
-[![](https://images.microbadger.com/badges/license/padajuan/docker-nuage-provisioner.svg)](http://microbadger.com/images/padajuan/docker-nuage-provisioner)
-[![](https://images.microbadger.com/badges/image/padajuan/docker-nuage-provisioner.svg)](http://microbadger.com/images/padajuan/docker-nuage-provisioner)
+[![](https://images.microbadger.com/badges/license/padajuan/nuage-docker-provisioner.svg)](http://microbadger.com/images/padajuan/nuage-docker-provisioner)
+[![](https://images.microbadger.com/badges/image/padajuan/nuage-docker-provisioner.svg)](http://microbadger.com/images/padajuan/nuage-docker-provisioner)
 
 This repository create a container that have some samples to be provisioned on a Openstack-Nuage infrastructure.
 
@@ -19,17 +19,17 @@ This repository are linked with [Dockerhub](https://hub.docker.com/r/padajuan/nu
 ### Cli-Mode
 To enter on cli-mode just execute the container like this:
 ```sh
-docker run -it --env-file ./demorc_region docker-nuage-provisioner <VSD_VIP>
+docker run -it --env-file ./demorc_region nuage-docker-provisioner <VSD_VIP>
 ```
 
 - Examples
   - Passing all env variables:
 ```sh
-docker run -it -e "OS_USERNAME=admin" -e "OS_TENANT_NAME=admin" -e "OS_PASSWORD=admin" -e "OS_AUTH_URL=http://keystone.demo.corp:35357/v2.0/" -e "VSP_NUAGE_USER=csproot" -e "VSP_NUAGE_PASS=admin" docker-nuage-provisioner nuage.demo.corp
+docker run -it -e "OS_USERNAME=admin" -e "OS_TENANT_NAME=admin" -e "OS_PASSWORD=admin" -e "OS_AUTH_URL=http://keystone.demo.corp:35357/v2.0/" -e "VSP_NUAGE_USER=csproot" -e "VSP_NUAGE_PASS=admin" nuage-docker-provisioner nuage.demo.corp
 ```
   - or using an env-file:
 ```sh
-docker run -it --env-file ./demorc_region docker-nuage-provisioner nuage.demo.corp
+docker run -it --env-file ./demorc_region nuage-docker-provisioner nuage.demo.corp
 ```
 
 ### Execution-Mode
@@ -37,12 +37,12 @@ This mode will execute a command and will stop the container, is more suitable t
 
 To enter on execution-mode just execute the container like this:
 ```sh
-docker run -it --env-file ./demorc_region docker-nuage-provisioner <VSD_VIP> <TENANT/DOMAIN> <sample/*.nuage file>
+docker run -it --env-file ./demorc_region nuage-docker-provisioner <VSD_VIP> <TENANT/DOMAIN> <sample/*.nuage file>
 ```
 
 - Example
 ```sh
-docker run -it --env-file ./demorc_region docker-nuage-provisioner 192.168.0.100 COMMS_TEST samples/3-tier-app.nuage
+docker run -it --env-file ./demorc_region nuage-docker-provisioner 192.168.0.100 COMMS_TEST samples/3-tier-app.nuage
 ```
 
 ## Infrastructure Versions
