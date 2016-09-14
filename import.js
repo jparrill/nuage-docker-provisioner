@@ -26,6 +26,16 @@ var enterprise = args[1]
 var jsonFile = args[2];
 var nuage_user = process.env.VSP_NUAGE_USER
 var nuage_pass = process.env.VSP_NUAGE_PASS
+var cmd_params = {}, jsonFile = "/dev/stdin";
+
+if ( args[2] ) {
+  if (args[2].indexOf("parameters=") == 0) {
+    cmd_params = JSON.parse(args[2].substring(11));
+    if ( args[3] ) jsonFile = args[3];
+  } else {
+    jsonFile = args[2];
+  }
+}
 
 var doDelete = false;	// TODO implement
 var runWebservice = false

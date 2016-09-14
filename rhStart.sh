@@ -27,13 +27,13 @@ function cli-mode() {
   echo -e "\tVSP Nuage Endpoint: $VSD_IP"
   echo -e "\tVSP Nuage User: $VSP_NUAGE_USER"
   echo -e "\tVSP Nuage Pass: $VSP_NUAGE_PASS"
+  echo
   /bin/bash
 }
 
 function execution-mode() {
   echo "Invoking import script with VSD_IP=$1 Organization=$2 Config_file=$3"
   if [[ -f $3 ]] || [[ ! -z $OS_USERNAME ]] || [[ ! -z $OS_PASSWORD ]] || [[ ! -z $OS_AUTH_URL ]] || [[ ! -z $OS_TENANT_NAME ]]; then
-    echo -e "\tWARNING: You have not defined VSP_NUAGE_USER or VSP_NUAGE_PASS as env variables, using default ones..."
     export VSD_IP=$1
     export ORG_NAME=$2
     export CONF_FILE=$3
@@ -49,6 +49,7 @@ function execution-mode() {
     echo -e "\tVSP Nuage Endpoint: $VSD_IP"
     echo -e "\tVSP Nuage User: $VSP_NUAGE_USER"
     echo -e "\tVSP Nuage Pass: $VSP_NUAGE_PASS"
+    echo
     exit -1
   fi
 }
