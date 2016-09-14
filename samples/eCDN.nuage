@@ -1,0 +1,672 @@
+{ 
+ "parameters" : {
+   "BASE" : "135.121.110",  // a /27 subnet with public routability
+   "VIP"  : "${BASE}.10",
+   "use-shared-network" : 0, // "ASK: Use a shared network for the frontend?"
+   "use-linked-domain" : 0   // "ASK: Use a linked hub domain for NFS and Docker registry?"
+ },
+
+ "networkmacrogroups" : [
+  { "name" : "DDoS Attacker IPs", "description" : "Auto-updated group with attacker IPs" }
+ ],
+ 
+ "$if:use-shared-network" : {
+ "sharednetworkresources" : [
+  // Create both in the same shared domain, such that we can use a single WAN service
+  // Need to create this one first, only Floating IP honors 'sharedResourceParentID'
+  { "name" : "Shared subnet",
+    "description" : "Shared subnet for webRTC and CDN client access",
+    "type" : "PUBLIC",
+    "address" : "${BASE}.0", "netmask" : "255.255.255.240", "gateway" : "${BASE}.14",
+    
+    "addressranges" : [ { "minAddress" : "${BASE}.1", "maxAddress" : "${BASE}.4", "externalID" : "openstack:4" } ],
+    
+    "ECMPCount" : 8,
+    "staticroutes" : [
+     { "address" : "${VIP}", "netmask" : "255.255.255.255", "nextHopIp" : "${BASE}.1" },
+     { "address" : "${VIP}", "netmask" : "255.255.255.255", "nextHopIp" : "${BASE}.2" },
+     { "address" : "${VIP}", "netmask" : "255.255.255.255", "nextHopIp" : "${BASE}.3" },
+     { "address" : "${VIP}", "netmask" : "255.255.255.255", "nextHopIp" : "${BASE}.4" },
+     { "address" : "${VIP}", "netmask" : "255.255.255.255", "nextHopIp" : "${BASE}.5" },
+     { "address" : "${VIP}", "netmask" : "255.255.255.255", "nextHopIp" : "${BASE}.6" },
+     { "address" : "${VIP}", "netmask" : "255.255.255.255", "nextHopIp" : "${BASE}.7" },
+     { "address" : "${VIP}", "netmask" : "255.255.255.255", "nextHopIp" : "${BASE}.8" }
+    ]
+  },
+  { "name" : "Floating IP to underlay",
+    "description" : "Floating IP for provisioning users / DNS access (underlay)",
+    "type" : "FLOATING",
+    "underlay" : true,  // Alternative 1: direct to underlay
+    "address" : "${BASE}.16", "netmask" : "255.255.255.240"
+  },
+  { "name" : "Floating IP using same WAN service",
+    "description" : "Floating IP for provisioning users / DNS access using same WAN service",
+    "type" : "FLOATING",
+    "address" : "${BASE}.16", "netmask" : "255.255.255.240",
+    //
+    // Alternative 2: Regular floating IPs using same WAN service
+    //
+    "sharedResourceParentID" : "parentID:sharednetworkresources.Shared subnet"
+  } 
+  
+ ]
+ },  // end-if
+ 
+ // User 'docker' is used to launch containers, needs to be member of 'Administrators' group!
+ "users" : [
+   { "userName" : "docker", "firstName" : "demo", "lastName" : "account", "email" : "docker@nuage.net",
+     "password" : "a9993e364706816aba3e25717850c26c9cd0d89d" }
+ ],
+ 
+ "groups" : [
+  { "name" : "Administrators", "users" : [ "ID:users.docker" ] },
+  { "name" : "Developers" }, { "name" : "Operations" }, { "name" : "Testers" }
+ ],
+ 
+ "enterprisenetworks" : [
+   { "name" : "VIP", "address" : "${VIP}", "netmask" : "255.255.255.255" },             // eCDN Service VIP
+   { "name" : "Docker repository",  "address" : "10.100.0.0", "netmask" : "255.255.255.252" },  // Docker repository, allows both direct and VIP access to .3
+   { "name" : "NFS VIP",  "address" : "10.100.0.3", "netmask" : "255.255.255.255" },  // NFS virtual IP
+   { "name" : "Internet",  "address" : "0.0.0.0", "netmask" : "0.0.0.0" },              // Default CIDR
+   { "name" : "Internet Proxy",  "address" : "135.245.0.0", "netmask" : "255.255.0.0" },
+   { "name" : "DNS",  "address" : "135.121.108.6", "netmask" : "255.255.255.255" },      // DNS, only used during installation
+   
+   // DDoS mitigation
+   { "name" : "Openstack Neutron API",  "address" : "135.121.109.123", "netmask" : "255.255.255.255" },
+   { "name" : "VSD API",  "address" : "135.121.109.114", "netmask" : "255.255.255.255" }
+ ],
+
+ "domaintemplates" : [
+ 
+ // $if:use-linked-domain
+ { "name" : "Shared Services Template", "description" : "Template for HUB domain with shared infrastructure services",
+   "zonetemplates" : [ 
+     { "name" : "Docker Repositories", "subnettemplates" : [ { "name" : "repos", "address" : "10.100.0.0", "netmask" : "255.255.255.0", "gateway" : "10.100.0.254",
+       "addressranges" : [ { "minAddress" : "10.100.0.1", "maxAddress" : "10.100.0.100" } ] } ] }
+   ]
+ },
+ 
+ {
+  "name" : "eCDN demo Frontend Template",
+  
+  // Link all instances to the shared services domain instances
+  // "domains" : [ "ID:domains.Docker Repository" ],
+  
+  "zonetemplates" : [ 
+  
+    // TODO: "$if:use-shared-network" : {
+    
+    { "name" : "eCDN Frontend" /*, "publicZone" : true */,
+      "subnettemplates" : [ {
+       "name" : "Frontend subnet",
+       "description" : "Private frontend subnet for webRTC and CDN client access",
+       "address" : "${BASE}.0", "netmask" : "255.255.255.240", "gateway" : "${BASE}.14",
+       "addressranges" : [ { "minAddress" : "${BASE}.1", "maxAddress" : "${BASE}.4", "externalID" : "openstack:4" } ]
+    } ]
+    }
+  ],
+
+  /**
+   * Apply Policy groups to implement hardware ACLs
+   */
+  "policygrouptemplates" : [
+   { "name" : "DDos mitigation VSG vports HW", "description" : "VSG vports used for DDoS mitigation", "type" : "HARDWARE" } 
+  ],
+  
+  "ingressacltemplates" : [
+    { "name" : "eCDN Ingress policy frontend (TOP)",
+      "priorityType" : "TOP",
+      "defaultAllowIP" : false,
+      "defaultAllowNonIP" : false,
+      "active" : true,
+      "ingressaclentrytemplates" : [
+        {
+          "priority"     : 120,
+          "description"  : "Allow access to DNS in the underlay on UDP port 53 (through Frontend)",
+          "statsLoggingEnabled" : true,
+          "flowLoggingEnabled" : true,
+          "reflexive"    : true,
+          "locationType" : "ZONE",   // source
+          "locationID"   : "ID:zonetemplates.eCDN Frontend",
+          "networkType"  : "ENTERPRISE_NETWORK",    // destination
+          "networkID"    : "ID:enterprisenetworks.DNS", // Gets resolved to ID
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "17",      // UDP
+          "sourcePort"      : "1024-65535",
+          "destinationPort" : "53",  
+          "action"       : "FORWARD"
+        },
+        {
+          "priority"     : 125,
+          "description"  : "Allow access to Internet proxy on port 8000",
+          "statsLoggingEnabled" : true,
+          "flowLoggingEnabled" : true,
+          "reflexive"    : true,
+          "locationType" : "ANY",   // source
+          "networkType"  : "ENTERPRISE_NETWORK",    // destination
+          "networkID"    : "ID:enterprisenetworks.Internet Proxy", // Gets resolved to ID
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "6",      // TCP
+          "sourcePort"      : "1024-65535",
+          "destinationPort" : "8000",  
+          "action"       : "FORWARD"
+        },
+        {
+          "priority"     : 130,
+          "description"  : "Allow eCDN instances to discover each other",
+          "statsLoggingEnabled" : true,
+          "flowLoggingEnabled" : true,
+          "reflexive"    : true,
+          "locationType" : "ANY",   // source
+          // "locationID"   : "ID:zonetemplates.eCDN Frontend",
+          "networkType"  : "ENTERPRISE_NETWORK",    // destination
+          "networkID"    : "ID:enterprisenetworks.VIP", // Gets resolved to ID
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "6",      // TCP
+          "sourcePort"      : "60443",   // probes use port 0xec1b as source
+          "destinationPort" : "80",  
+          "action"       : "FORWARD"
+        }
+    ] },
+    { "name" : "eCDN Ingress policy frontend (DDoS mitigation)",
+      "priorityType" : "NONE",
+      "priority"     : "1",
+      "defaultAllowIP" : false,
+      "defaultAllowNonIP" : false,
+      "active" : true,
+      "ingressaclentrytemplates" : [
+        {
+        "priority"        : 100,
+        "description"     : "Allow DDoS VNFs to forward traffic from clients to TCP port 80",
+        "locationType"    : "POLICYGROUP",
+        "locationID"      : "ID:policygrouptemplates.DDos mitigation VSG vports HW",
+        "networkType"     : "ENTERPRISE_NETWORK",
+        "networkID"       : "ID:enterprisenetworks.VIP",
+        "etherType"       : "0x0800", // IPv4
+        "DSCP"            : "*",
+        "protocol"        : "6",      // TCP
+        "sourcePort"      : "*",  
+        "destinationPort" : "80",  
+        "action"          : "FORWARD"
+        }
+      ]
+    }, 
+    { "name" : "eCDN Ingress policy frontend (BOTTOM)",
+      "priorityType" : "BOTTOM",
+      "defaultAllowIP" : false,
+      "defaultAllowNonIP" : false,
+      "active" : true,
+      "ingressaclentrytemplates" : [
+        {
+          "priority"     : 999,
+          "description"  : "Drop anything else (stats/syslog)",
+          "statsLoggingEnabled" : true,
+          "flowLoggingEnabled" : true,
+          "reflexive"    : false,
+          "networkType"  : "ANY",   // source
+          "locationType" : "ANY",   // destination
+          "etherType"    : "0x0800",
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "DROP"
+        }
+      ]
+     }
+  ],
+    
+  "egressacltemplates" : [
+    { "name" : "eCDN Egress policy frontend (TOP)",
+      "priorityType" : "TOP",
+      "active" : true,
+      "defaultAllowIP" : false,
+      "defaultAllowNonIP" : false,
+      "defaultInstallACLImplicitRules" : false,
+      "egressaclentrytemplates" : [
+        {
+          "priority"     : 100,
+          "description"  : "Allow HTTPS on port 443 (reflexive)",
+          "statsLoggingEnabled" : true,
+          "flowLoggingEnabled" : true,
+          "reflexive"    : true,
+          "networkType"  : "ANY",    // source, cannot use INTERNET_POLICYGROUP
+          "locationType" : "ZONE",   // destination
+          "locationID"   : "ID:zonetemplates.eCDN Frontend",
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "6",      // TCP
+          "sourcePort"   : "1024-65535",
+          "destinationPort" : "443",  // https
+          "action"       : "FORWARD"
+        },
+        {
+          "priority"     : 110,
+          "description"  : "Allow HTTP on port 80 (reflexive)",
+          "statsLoggingEnabled" : false,
+          "flowLoggingEnabled" : false,
+          "reflexive"    : true,
+          "networkType"  : "ANY",    // source, cannot use INTERNET_POLICYGROUP
+          "locationType" : "ZONE",   // destination
+          "locationID"   : "ID:zonetemplates.eCDN Frontend",
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "6",      // TCP
+          "sourcePort"   : "1024-65535", // XXX Discovery probes use 0 port? Use 0xec1b instead ( high )
+          "destinationPort" : "80",  // http
+          "action"       : "FORWARD"
+        },
+        {
+          "priority"     : 120,
+          "description"  : "Allow redirected HTTP on port 8080 (reflexive)",
+          "statsLoggingEnabled" : true,
+          "flowLoggingEnabled" : true,
+          "reflexive"    : true,
+          "networkType"  : "ANY",    // source, cannot use INTERNET_POLICYGROUP
+          "locationType" : "ANY",   // destination
+          // "locationID"   : "ID:zonetemplates.eCDN Frontend",
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "6",      // TCP
+          "sourcePort"   : "1024-65535", // XXX Discovery probes use 0 port? Use 0xec1b instead ( high )
+          "destinationPort" : "8080",  // http
+          "action"       : "FORWARD"
+        }
+    ]
+   },
+   { "name" : "eCDN Egress policy frontend (DDoS mitigation)",
+      "priorityType" : "NONE",
+      "priority"     : 1,
+      "active"       : true,
+      "defaultAllowIP" : false,
+      "defaultAllowNonIP" : false,
+      "defaultInstallACLImplicitRules" : false,
+      "egressaclentrytemplates" : [
+      {
+              "priority": 10,
+              "DSCP": "*",
+              "networkID": "ID:networkmacrogroups.DDoS Attacker IPs",
+              "locationID": "ID:policygrouptemplates.DDos mitigation VSG vports HW",
+              "action": "DROP",
+              
+              "protocol": "ANY",
+              "reflexive": false,
+              "locationType": "POLICYGROUP",
+              "networkType": "NETWORK_MACRO_GROUP",
+              "etherType": "0x0800",
+              "description": "Drop traffic from auto-detected DDoS client IPs"
+            },
+            {
+              "DSCP": "*",
+              "networkID": "ID:networkmacrogroups.DDoS Attacker IPs",
+              "action": "DROP",
+              "priority": 20,
+              "protocol": "ANY",
+              "reflexive": false,
+              "locationType": "ANY",
+              "networkType": "NETWORK_MACRO_GROUP",
+              "etherType": "0x0800",
+              "description": "Drop traffic from auto-detected DDoS clients to VMs"
+            },
+            {
+              "DSCP": "*",
+              "description": "Allow TCP port 80 to service IP",
+              "etherType": "0x0800",
+              "networkType": "ANY",
+              "locationType": "POLICYGROUP",
+              "reflexive": false,
+              "sourcePort": "*",
+              "destinationPort": "80",
+              "protocol": "6",
+              "priority": 30,
+              "action": "FORWARD",
+              "addressOverride": "${VIP}/32",
+              "locationID": "ID:policygrouptemplates.DDos mitigation VSG vports HW"
+            },
+            {
+              "DSCP": "*",
+              "locationID": "ID:policygrouptemplates.DDos mitigation VSG vports HW",
+              "action": "FORWARD",
+              "priority": 40,
+              "protocol": "17",
+              "destinationPort": "*",
+              "sourcePort": "67",
+              "reflexive": false,
+              "locationType": "POLICYGROUP",
+              "networkType": "ANY",
+              "etherType": "0x0800",
+              "description": "Allow DHCP responses"
+            },
+            {
+              "DSCP": "*",
+              "description": "Allow VSD API access",
+              "etherType": "0x0800",
+              "networkType": "ENTERPRISE_NETWORK",
+              "locationType": "POLICYGROUP",
+              "reflexive": false,
+              "sourcePort": "8443",
+              "destinationPort": "*",
+              "protocol": "6",
+              "priority": 50,
+              "action": "FORWARD",
+              "locationID": "ID:policygrouptemplates.DDos mitigation VSG vports HW",
+              "networkID": "ID:enterprisenetworks.VSD API"
+            },
+            {
+              "DSCP": "*",
+              "description": "Allow Neutron API access",
+              "etherType": "0x0800",
+              "networkType": "ENTERPRISE_NETWORK",
+              "locationType": "POLICYGROUP",
+              "reflexive": false,
+              "sourcePort": "*",
+              "destinationPort": "*",
+              "protocol": "6",
+              "priority": 60,
+              "action": "FORWARD",
+              "locationID": "ID:policygrouptemplates.DDos mitigation VSG vports HW",
+              "networkID": "ID:enterprisenetworks.Openstack Neutron API"
+            },
+            {
+              "DSCP": "*",
+              "locationID": "ID:policygrouptemplates.DDos mitigation VSG vports HW",
+              "action": "DROP",
+              "priority": 999,
+              "protocol": "ANY",
+              "reflexive": false,
+              "locationType": "POLICYGROUP",
+              "networkType": "ANY",
+              "etherType": "0x0800",
+              "description": "Drop anything else going to DDoS mitigation ports"
+            }
+      ]
+   },
+   { "name" : "eCDN Egress policy frontend (BOTTOM)",
+      "priorityType" : "BOTTOM",
+      "active" : true,
+      "defaultAllowIP" : false,
+      "defaultAllowNonIP" : false,
+      "defaultInstallACLImplicitRules" : false,
+      "egressaclentrytemplates" : [
+        {
+          "priority"     : 999,
+          "description"  : "Drop anything else (stats/syslog)",
+          "statsLoggingEnabled" : true,
+          "flowLoggingEnabled" : true,
+          "reflexive"    : false,
+          "networkType"  : "ANY",   // source
+          "locationType" : "ANY",   // destination
+          "etherType"    : "0x0800",
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "DROP"
+        }
+      ]
+    }
+   ]
+  },
+  {
+  "name" : "eCDN demo Backend Template",
+  
+  // Link all instances to the shared services domain instances
+  // "domains" : [ "ID:domains.Docker Repository" ],
+  
+  "zonetemplates" : [
+    //
+    // Because the public Zone lives in a different, shared domain, we need containers with 2 vNICs in order to communicate with NFS
+    // Alternatively, the NFS backend would be reachable in the underlay
+    //
+    { "name" : "eCDN Backend", "subnettemplates" : [ { "name" : "back", "address" : "192.168.1.0", "netmask" : "255.255.255.240", "gateway" : "192.168.1.14",
+      "addressranges" : [ { "minAddress" : "192.168.1.1", "maxAddress" : "192.168.1.4", "externalID" : "openstack:4" } ] } ] },
+      
+     // $if-not:use-linked-domain
+     { "name" : "Docker Repo and NFS", "subnettemplates" : [ { "name" : "repos", "address" : "10.100.0.0", "netmask" : "255.255.255.0", "gateway" : "10.100.0.254",
+       "addressranges" : [ { "minAddress" : "10.100.0.1", "maxAddress" : "10.100.0.2" } ] } ] }
+      
+  ],
+
+  "ingressacltemplates" : [
+    { "name" : "eCDN Ingress policy backend (TOP)",
+      "priorityType" : "TOP",
+      "defaultAllowIP" : false,
+      "defaultAllowNonIP" : false,
+      "active" : true,
+      "ingressaclentrytemplates" : [
+        {
+          "priority"     : 110,
+          "description"  : "Allow access to NFS v4 on TCP port 2049",
+          "statsLoggingEnabled" : true,
+          "flowLoggingEnabled" : true,
+          "reflexive"    : true,
+          "locationType" : "ZONE",   // source
+          "locationID"   : "ID:zonetemplates.eCDN Backend",
+          "networkType"  : "ENTERPRISE_NETWORK",    // destination
+          "networkID"    : "ID:enterprisenetworks.NFS VIP", // Gets resolved to ID
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "6",      // TCP
+          "sourcePort"      : "*",   // client uses also low port ranges
+          "destinationPort" : "2049",  
+          "action"       : "FORWARD"
+        },
+        {
+          "priority"     : 115,
+          "description"  : "Allow access to Docker repository on TCP port 5000",
+          "statsLoggingEnabled" : true,
+          "flowLoggingEnabled" : true,
+          "reflexive"    : true,
+          "locationType" : "ZONE",   // source
+          "locationID"   : "ID:zonetemplates.eCDN Backend",
+          "networkType"  : "ENTERPRISE_NETWORK",    // destination
+          "networkID"    : "ID:enterprisenetworks.Docker repository", // Gets resolved to ID
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "6",      // TCP
+          "sourcePort"      : "1024-65535",
+          "destinationPort" : "5000",  
+          "action"       : "FORWARD"
+        },
+        {
+          "priority"     : 120,
+          "description"  : "Allow access to DNS in the underlay on UDP port 53 (through Backend)",
+          "statsLoggingEnabled" : true,
+          "flowLoggingEnabled" : true,
+          "reflexive"    : true,
+          "locationType" : "ZONE",   // source
+          "locationID"   : "ID:zonetemplates.Docker Repo and NFS",
+          "networkType"  : "ENTERPRISE_NETWORK",    // destination
+          "networkID"    : "ID:enterprisenetworks.DNS", // Gets resolved to ID
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "17",      // UDP
+          "sourcePort"      : "1024-65535",
+          "destinationPort" : "53",  
+          "action"       : "FORWARD"
+        },
+        {
+          "priority"     : 125,
+          "description"  : "Allow access to Internet proxy on port 8000",
+          "statsLoggingEnabled" : true,
+          "flowLoggingEnabled" : true,
+          "reflexive"    : true,
+          "locationType" : "ANY",   // source
+          "networkType"  : "ENTERPRISE_NETWORK",    // destination
+          "networkID"    : "ID:enterprisenetworks.Internet Proxy", // Gets resolved to ID
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "6",      // TCP
+          "sourcePort"      : "1024-65535",
+          "destinationPort" : "8000",  
+          "action"       : "FORWARD"
+        }
+      ]
+    }, 
+    { "name" : "eCDN Ingress policy backend (BOTTOM)",
+      "priorityType" : "BOTTOM",
+      "defaultAllowIP" : false,
+      "defaultAllowNonIP" : false,
+      "active" : true,
+      "ingressaclentrytemplates" : [
+        {
+          "priority"     : 999,
+          "description"  : "Drop anything else (stats/syslog)",
+          "statsLoggingEnabled" : true,
+          "flowLoggingEnabled" : true,
+          "reflexive"    : false,
+          "networkType"  : "ANY",   // source
+          "locationType" : "ANY",   // destination
+          "etherType"    : "0x0800",
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "DROP"
+        }
+      ]
+     }
+  ],
+    
+  "egressacltemplates" : [
+    { "name" : "eCDN Egress policy backend (TOP)",
+      "priorityType" : "TOP",
+      "active" : true,
+      "defaultAllowIP" : false,
+      "defaultAllowNonIP" : false,
+      "defaultInstallACLImplicitRules" : false,
+      "egressaclentrytemplates" : [
+        {
+          "priority"     : 100,
+          "description"  : "Allow Docker repository access on TCP port 5000",
+          "statsLoggingEnabled" : true,
+          "flowLoggingEnabled" : true,
+          "reflexive"    : true,
+          "locationType" : "ZONE",   // dest
+          "locationID"   : "ID:zonetemplates.Docker Repo and NFS",
+          "networkType"  : "ENDPOINT_DOMAIN",    // src
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "6",      // TCP
+          "sourcePort"      : "1024-65535",
+          "destinationPort" : "5000",  
+          "action"       : "FORWARD"
+        },
+        {
+          "priority"     : 110,
+          "description"  : "Allow NFS v4 on TCP port 2049",
+          "statsLoggingEnabled" : true,
+          "flowLoggingEnabled" : true,
+          "reflexive"    : true,
+          "locationType" : "ZONE",   // dest
+          "locationID"   : "ID:zonetemplates.Docker Repo and NFS",
+          "networkType"  : "ENDPOINT_DOMAIN",    // src
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "6",      // TCP
+          "sourcePort"      : "*",   // client uses also low port ranges
+          "destinationPort" : "2049",  
+          "action"       : "FORWARD"
+        }
+      ]
+   },
+   { "name" : "eCDN Egress policy backend (BOTTOM)",
+      "priorityType" : "BOTTOM",
+      "active" : true,
+      "defaultAllowIP" : false,
+      "defaultAllowNonIP" : false,
+      "defaultInstallACLImplicitRules" : false,
+      "egressaclentrytemplates" : [
+        {
+          "priority"     : 999,
+          "description"  : "Drop anything else (stats/syslog)",
+          "statsLoggingEnabled" : true,
+          "flowLoggingEnabled" : true,
+          "reflexive"    : false,
+          "networkType"  : "ANY",   // source
+          "locationType" : "ANY",   // destination
+          "etherType"    : "0x0800",
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "DROP"
+        }
+      ]
+    }
+   ]
+  } 
+ ],
+ 
+ "domains" : [
+ 
+   // { "name" : "Docker Repository", "templateID" : "ID:domaintemplates.Shared Services Template", "leakingEnabled" : true },
+ 
+   { "name" : "eCDN demo Frontend",  "templateID" : "ID:domaintemplates.eCDN demo Frontend Template",
+   
+     // Need to instantiate the zone template to be able to reference it in the ACL template below
+     // Also need to create the subnet, to link it to the shared network resource
+     "zones" : [
+      /* $if:use-shared-network
+      { "name" : "eCDN Frontend", "templateID" : "ID:zonetemplates.eCDN Frontend", 
+        "subnets" : [
+         { "name" : "front", "associatedSharedNetworkResourceID" : "ID:sharednetworkresources.Shared subnet" }
+        ] 
+      }
+      */
+     ]
+	 
+	 "ECMPCount" : 8,
+     "staticroutes" : [
+     { "address" : "${VIP}", "netmask" : "255.255.255.255", "nextHopIp" : "${BASE}.1" },
+     { "address" : "${VIP}", "netmask" : "255.255.255.255", "nextHopIp" : "${BASE}.2" },
+     { "address" : "${VIP}", "netmask" : "255.255.255.255", "nextHopIp" : "${BASE}.3" },
+     { "address" : "${VIP}", "netmask" : "255.255.255.255", "nextHopIp" : "${BASE}.4" },
+     { "address" : "${VIP}", "netmask" : "255.255.255.255", "nextHopIp" : "${BASE}.5" },
+     { "address" : "${VIP}", "netmask" : "255.255.255.255", "nextHopIp" : "${BASE}.6" },
+     { "address" : "${VIP}", "netmask" : "255.255.255.255", "nextHopIp" : "${BASE}.7" },
+     { "address" : "${VIP}", "netmask" : "255.255.255.255", "nextHopIp" : "${BASE}.8" }
+    ]
+   },
+   { "name" : "eCDN demo Backend",  "templateID" : "ID:domaintemplates.eCDN demo Backend Template",
+   
+     // Enable PAT to access DNS server in underlay? Cant combine with domain linking
+     // $if-not:use-domain-linking
+     "PATEnabled" : "ENABLED",
+     
+     // Enable ECMP to access redundant NFS servers in the linked domain (or zone)
+     "ECMPCount" : 2,
+     
+     "staticroutes" : [
+     { "address" : "10.100.0.3", "netmask" : "255.255.255.255", "nextHopIp" : "10.100.0.1" },
+     { "address" : "10.100.0.3", "netmask" : "255.255.255.255", "nextHopIp" : "10.100.0.2" }
+     ],
+   
+     // Need to instantiate the zone template to specify DHCP options
+     "zones" : [ 
+      {
+        "name" : "eCDN Backend", "templateID" : "ID:zonetemplates.eCDN Backend",
+        
+        "dhcpoptions" : [
+         {
+            "actualType"    : 6,                    // DNS servers
+            "actualValues"  : [ "135.121.108.6" ]   // Use underlay DNS server through frontend
+         },
+         // Set a DHCP option to configure the routes to the 10.0.0.0/8 subnet via eth1
+        {
+         "type"   : "79",          // classless static route, see RFC3442 ( 121 == 79 in hex )
+         "length" : "06",
+         "value"  : "080ac0a8010e"  // 10.0.0.0/8 via 192.168.1.14
+        }
+        ]
+      },
+      {
+        "name" : "Docker Repo and NFS", "templateID" : "ID:zonetemplates.Docker Repo and NFS",
+        
+        "dhcpoptions" : [
+         {
+            "actualType"    : 6,                    // DNS servers
+            "actualValues"  : [ "135.121.108.6" ]   // Use underlay DNS server through PAT
+         }
+        ]
+      }
+     ]
+   }
+ ]
+ 
+}

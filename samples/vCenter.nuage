@@ -1,0 +1,74 @@
+{
+ "parameters" : {
+	"VSD_IP" : "135.121.109.101",
+	
+	"MGMT_PG" : "VM Network",
+	"DATA_PG" : "dvVRS",
+	"VM_PG"   : "1-Nuage Cluster-OVSPG",
+	"MGMT_NM" : "255.255.255.128",
+	"DATA_NM" : "255.255.255.240"
+ },
+
+ "vcenters" : [
+   { "name" : "My vCenter", 
+     "ipAddress" : "135.121.109.113",
+	 "httpPort" : 80,
+	 "httpsPort" : 443,
+	 "userName" : "root",
+	 "password" : "vmware",	// Default password for vCenter appliance
+	 
+	 "ovfURL" : "http://${VSD_IP}:8000/VRS_3.2.4-133_10042015.ovf",
+	 "primaryNuageController"   : "135.121.110.101",
+	 "secondaryNuageController" : "135.121.110.102",
+	 
+	 "allowMgmtDHCP" : false,
+	 "allowDataDHCP" : false,
+	 "separateDataNetwork" : true,
+	 
+	 "mgmtNetworkPortgroup" : "${MGMT_PG}",
+	 "mgmtGateway" : "135.121.109.1",
+	 "mgmtDNS1" : "135.121.108.6",
+	 "ntpServer1" : "135.121.108.6",
+	 "dataNetworkPortgroup" : "${DATA_PG}",
+	 "dataGateway" : "10.9.0.17",
+	 "mtu" : 9000,
+	 "vmNetworkPortgroup" : "${VM_PG}",
+	 "multicastSourcePortgroup" : "${MGMT_PG}",
+	 
+	 // Settings for PAT/FIP to underlay, requires a VLAN on eth2
+	 // "networkUplinkInterface" : "eth2.1000",
+	 // "networkUplinkInterfaceGateway" : "135.121.110.33",
+	 // "networkUplinkInterfaceNetmask" : "255.255.255.240",
+	 
+	 "hypervisorUser"     : "root",
+	 "hypervisorPassword" : "Alcateldc",
+	 
+	 // vCenter plug-in mode, set to 'false' for Openstack-driven deployment of VMs
+	 "vRequireNuageMetadata" : false,
+	 
+	 "vcenterdatacenters" : [
+	 {
+	   "name" : "Nuage DC",
+	   
+	   "vcenterclusters" : [
+	   {
+		 "name" : "Nuage Cluster",
+		 
+		 "vcenterhypervisors" : [
+		  { "name" : "c4h6", "description" : "c4h6 server", "hypervisorIP" : "135.121.109.16", "dhcpRelayServer" : "135.121.109.90",
+		    "mgmtIPAddress" : "135.121.109.90", "mgmtNetmask" : "${MGMT_NM}", "dataIPAddress" : "10.9.0.20", "dataNetmask" : "${DATA_NM}",
+		    "hypervisorUser" : "root", "hypervisorPassword" : "Alcateldc", "mgmtNetworkPortgroup" : "${MGMT_PG}", "dataNetworkPortgroup" : "${DATA_PG}", "vmNetworkPortgroup" : "${VM_PG}",
+			"multicastSourcePortgroup" : "${MGMT_PG}", "networkUplinkInterfaceIp" : "135.121.110.36" },
+			
+		  { "name" : "c4h7", "description" : "c4h7 server", "hypervisorIP" : "135.121.109.17", "dhcpRelayServer" : "135.121.109.91",
+		    "mgmtIPAddress" : "135.121.109.91", "mgmtNetmask" : "${MGMT_NM}", "dataIPAddress" : "10.9.0.21", "dataNetmask" : "${DATA_NM}",
+		    "hypervisorUser" : "root", "hypervisorPassword" : "Alcateldc", "mgmtNetworkPortgroup" : "${MGMT_PG}", "dataNetworkPortgroup" : "${DATA_PG}", "vmNetworkPortgroup" : "${VM_PG}",
+			"multicastSourcePortgroup" : "${MGMT_PG}", "networkUplinkInterfaceIp" : "135.121.110.37" }
+		 ]
+	   }
+	   ]
+	 }
+	 ]
+   }
+ ]
+}

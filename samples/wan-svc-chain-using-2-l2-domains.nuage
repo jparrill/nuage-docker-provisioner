@@ -1,0 +1,152 @@
+{  
+ "parameters" : {
+	"dc-pe-name" : "dc1-pe"	// Name of your 7750 gateway, organization needs permissions at the gw level
+ },
+ 
+ "gateways" : [ 
+  { "name" : "${dc-pe-name}", "services" : [ 
+    { "name" : "Dirty WAN", "WANServiceIdentifier" : "dirty", "serviceType" : "L2", "configType" : "DYNAMIC", "IRBEnabled" : true, "servicePolicy" : "l2-irb", "description" : "VNF input traffic from clients" },
+	{ "name" : "Clean WAN", "WANServiceIdentifier" : "clean", "serviceType" : "L2", "configType" : "DYNAMIC", "IRBEnabled" : true, "servicePolicy" : "l2-irb", "description" : "VNF output traffic" }
+    ] 
+  }
+ ],
+ 
+ "l2domaintemplates" : [
+  {
+   "name"          : "Dirty L2 domain template",
+   "DHCPManaged"   : true,
+   "address" 	   : "10.0.0.0", 
+   "netmask" 	   : "255.255.255.252", 
+   "gateway" 	   : "10.0.0.1",	// gateway address, resides on 7750 interface
+   "addressranges" : [ { "minAddress" : "10.0.0.2", "maxAddress" : "10.0.0.2" } ],
+   
+   "ingressacltemplates" : [
+    { "name" : "Service Chain Ingress policy - allow all",
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+      "active" : true,
+	  "ingressaclentrytemplates" : [		
+		{
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+		  "reflexive"    : false,
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",    // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+	 }
+   ],
+	
+  "egressacltemplates" : [
+    { "name" : "Service Chain Egress policy - allow all",
+      "active" : true,
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+	  "defaultInstallACLImplicitRules" : true,
+      "egressaclentrytemplates" : [
+        {
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",   // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+    }
+   ]  
+ },
+ {
+   "name"          : "Clean L2 domain template",
+   "DHCPManaged"   : true,
+   "address" 	   : "192.168.0.0", 
+   "netmask" 	   : "255.255.255.252", 
+   "gateway" 	   : "192.168.0.1",	// gateway address to be configured on 7750 interface, needs explicit DHCP option
+   "addressranges" : [ { "minAddress" : "192.168.0.2", "maxAddress" : "192.168.0.2" } ],
+   
+   "ingressacltemplates" : [
+    { "name" : "Service Chain Ingress policy - allow all",
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+      "active" : true,
+	  "ingressaclentrytemplates" : [		
+		{
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+		  "reflexive"    : false,
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",    // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+	 }
+   ],
+	
+  "egressacltemplates" : [
+    { "name" : "Service Chain Egress policy - allow all",
+      "active" : true,
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+	  "defaultInstallACLImplicitRules" : true,
+      "egressaclentrytemplates" : [
+        {
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",   // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+    }
+   ]
+ }
+ ],  
+ 
+ "l2domains" : [ 
+   { "name" : "Dirty domain",
+     "description" : "L2 domain for incoming client traffic (eth1)", 
+     "templateID" : "ID:l2domaintemplates.Dirty L2 domain template",
+	 
+	 "redirectiontargets" : [
+	  // Note: no point to set the 'ESI', VSD overwrites it with a unique value upon assignment to the VM vport
+      { "name" : "FW-IN", "endPointType" : "VIRTUAL_WIRE" }
+     ],
+	 "dhcpoptions" : [
+        // Set a DHCP option to configure the routes to CE1 via eth0
+        {
+         "type"   : "79", // classless static route, see RFC3442 ( 121 == 79 in hex )
+         "length" : "09",
+         "value"  : "1e140000000a000001"  // 20.0.0.0/30 via 10.0.0.1
+        }
+      ]
+   },
+   { "name" : "Clean domain",
+     "description" : "L2 domain for traffic having passed through the VFW (eth0)", 
+     "templateID" : "ID:l2domaintemplates.Clean L2 domain template",
+	 
+	 "redirectiontargets" : [
+      { "name" : "FW-OUT", "endPointType" : "VIRTUAL_WIRE" }
+     ],
+	 "dhcpoptions" : [
+         {
+            "type"		: "03",                    // Default gateway
+			"length"	: "04",
+            "value"		: "c0a80001"
+         }
+      ]
+   }
+  ]
+  
+}

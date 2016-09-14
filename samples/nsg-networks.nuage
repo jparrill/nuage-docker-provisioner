@@ -1,0 +1,369 @@
+{
+ "parameters" : {
+   "VNS-proxy" : "135.121.109.110",	// IP address of VNS proxy, used as DNS server for uplinks
+   "WAN-base"  : "135.121.110"		// IP address base for WAN uplinks, 2 /28 subnets are created + FIP pool
+ },
+ 
+ // User 'WAN-Activaction' is used to web-activate NSG-Vs, no phone number to prevent popup
+ "users" : [
+   { "userName" : "WAN-Activation", "firstName" : "WAN", "lastName" : "Activation", "email" : "wan@nuage.net", "mobileNumber" : null,
+     "password" : "a9993e364706816aba3e25717850c26c9cd0d89d" }
+ ],
+ 
+ "sharednetworkresources" : [
+  { "name" : "Floating IP to test NAT-T",
+    "description" : "Floating IPs for testing NAT-T on NSG-V uplinks",
+    "type" : "FLOATING",
+    // "underlay" : true,  // Alternative: direct to underlay
+    "address" : "${WAN-base}.0", "netmask" : "255.255.255.240", "gateway" : "${WAN-base}.14",
+    "addressranges" : [ { "minAddress" : "${WAN-base}.1", "maxAddress" : "${WAN-base}.13" } ] 
+  }
+ ],
+ 
+ "domaintemplates" : [
+ {
+  "name" : "NSG-V WAN Domain template",
+
+  "zonetemplates" : [ 
+   { "name" : "WAN" }
+  ],
+  
+  "ingressacltemplates" : [
+    { "name" : "NSG-V WAN Ingress policy",
+	  "description" : "Allow all",
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+      "active" : true,
+	  "ingressaclentrytemplates" : [		
+		{
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+		  "reflexive"    : false,
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",    // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+	 }
+   ],
+	
+  "egressacltemplates" : [
+    { "name" : "NSG-V WAN Egress policy",
+	  "description" : "Allow all",
+      "active" : true,
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+	  "defaultInstallACLImplicitRules" : true,
+      "egressaclentrytemplates" : [
+        {
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",   // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+    }
+   ]  
+  },{
+   "name" : "NSG-V L3 LAN Domain template",
+   "description" : "To be used for VM LAN ports, supports L3 redirection targets and VNF VMs; VSD provides DHCP",
+   "zonetemplates" : [ 
+    { "name" : "L3 LAN A",
+	  "subnettemplates" : [
+	   { "name" : "a", "address" : "10.0.0.0", "netmask" : "255.255.255.0", "gateway" : "10.0.0.254", 
+		 "addressranges" : [ { "minAddress" : "10.0.0.2", "maxAddress" : "10.0.0.10", "DHCPPoolType" : "HOST" } ]
+	   }
+	  ]
+	},
+	{ "name" : "L3 LAN B",
+	  "subnettemplates" : [
+	   { "name" : "b", "address" : "192.168.0.0", "netmask" : "255.255.255.0", "gateway" : "192.168.0.254", 
+		 "addressranges" : [ { "minAddress" : "192.168.0.2", "maxAddress" : "192.168.0.10", "DHCPPoolType" : "HOST" } ]
+	   }
+	  ]
+	}
+   ],
+  
+  "ingressacltemplates" : [
+    { "name" : "NSG-V LAN Ingress policy",
+	  "description" : "Allow all",
+      "defaultAllowNonIP"   : true,
+	  "defaultAllowIP"      : true,
+	  "allowL2AddressSpoof" : true, // For the NSG-V LAN port, allow any MAC ( could also be configured on the VM vport )
+      "active" : true,
+	  "ingressaclentrytemplates" : [
+	    {
+          "priority"     : 10,
+          "description"  : "Allow NSG BFD packets UDP port 3784",
+          "statsLoggingEnabled" : true,
+          "flowLoggingEnabled" : true,
+          "reflexive"    : true,
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",    // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "17",      // UDP
+          "sourcePort"      : "1024-65535",
+          "destinationPort" : "3784",  
+          "action"       : "FORWARD"
+        },
+		{
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+		  "statsLoggingEnabled" : true,
+          "flowLoggingEnabled" : true,
+		  "reflexive"    : false,
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",    // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+	 }
+   ],
+	
+  "egressacltemplates" : [
+    { "name" : "NSG-V LAN Egress policy",
+	  "description" : "Allow all",
+      "active" : true,
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+	  "defaultInstallACLImplicitRules" : true,
+      "egressaclentrytemplates" : [
+        {
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",   // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+    }
+   ]  
+  },
+  {
+  "name" : "Overlay template",
+
+  "zonetemplates" : [ { "name" : "DC Site A" },  { "name" : "DC Site B" }, { "name" : "Remote Site" } ],
+  
+  "ingressacltemplates" : [
+    { "name" : "Overlay Ingress policy",
+	  "description" : "Allow all",
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+      "active" : true,
+	  "ingressaclentrytemplates" : [		
+		{
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+		  "reflexive"    : false,
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",    // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+	 }
+   ],
+	
+  "egressacltemplates" : [
+    { "name" : "Overlay Egress policy",
+	  "description" : "Allow all",
+      "active" : true,
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+	  "defaultInstallACLImplicitRules" : true,
+      "egressaclentrytemplates" : [
+        {
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",   // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+    }
+   ]  
+  }
+  ],
+  
+  "l2domaintemplates" : [
+  {
+  "name" : "NSG-V LAN L2Domain template",
+  "description" : "L2 domain to be used for NSG-V LAN ports, with DHCP provided by the NSG-V VM; supports VLANs", 
+  "DHCPManaged" : false,		// As the NSG-V will be providing DHCP services on this L2 segment
+  
+  "ingressacltemplates" : [
+    { "name" : "NSG-V LAN Ingress policy",
+	  "description" : "Allow all",
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+	  "allowL2AddressSpoof" : true,		// For the NSG-V LAN port, allow any MAC
+      "active" : true,
+	  "ingressaclentrytemplates" : [
+	    {
+          "priority"     : 10,
+          "description"  : "Allow NSG BFD packets UDP port 3784",
+          "statsLoggingEnabled" : true,
+          "flowLoggingEnabled" : true,
+          "reflexive"    : true,
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",    // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "17",      // UDP
+          "sourcePort"      : "1024-65535",
+          "destinationPort" : "3784",  
+          "action"       : "FORWARD"
+        },
+		{
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+		  "statsLoggingEnabled" : true,
+          "flowLoggingEnabled" : true,
+		  "reflexive"    : false,
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",    // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+	 }
+   ],
+	
+  "egressacltemplates" : [
+    { "name" : "NSG-V LAN Egress policy",
+	  "description" : "Allow all",
+      "active" : true,
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+	  "defaultInstallACLImplicitRules" : true,
+      "egressaclentrytemplates" : [
+        {
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",   // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+    }
+   ]  
+  }
+ ],
+ 
+ "domains" : [
+   { "name" : "NSG-V WAN Uplink 1 Domain",  "templateID" : "ID:domaintemplates.NSG-V WAN Domain template",
+     // Need to instantiate a zone to specify DHCP options
+     "zones" : [ 
+      {
+        "name" : "WAN", "templateID" : "ID:zonetemplates.WAN",
+        "dhcpoptions" : [
+         {
+            "actualType"    : 6,                   // DNS servers
+            "actualValues"  : [ "${VNS-proxy}" ]   // Use the VNS proxy as DNS server to resolve its own IP
+         }
+        ],
+	"subnets" : [
+         { "name" : "wan1", "address" : "${WAN-base}.0", "netmask" : "255.255.255.240", "gateway" : "${WAN-base}.14", 
+           "description" : "Needs MTU of 1600",
+	       "addressranges" : [ { "minAddress" : "${WAN-base}.1", "maxAddress" : "${WAN-base}.13" } ] }
+        ]
+      }
+     ]
+   },
+   { "name" : "NSG-V WAN Uplink 2 Domain",  "templateID" : "ID:domaintemplates.NSG-V WAN Domain template",
+     // Need to instantiate the zone template to specify DHCP options
+     "zones" : [ 
+      {
+        "name" : "WAN", "templateID" : "ID:zonetemplates.WAN",
+		"dhcpoptions" : [
+         {
+            "actualType"    : 6,                   // DNS servers
+            "actualValues"  : [ "${VNS-proxy}" ]   // For NSG-Vs which are only connected to WAN2
+         }
+        ],
+        "subnets" : [
+         { "name" : "wan2", "address" : "${WAN-base}.16", "netmask" : "255.255.255.240", "gateway" : "${WAN-base}.30", 
+           "description" : "Needs MTU of 1600",
+	       "addressranges" : [ { "minAddress" : "${WAN-base}.17", "maxAddress" : "${WAN-base}.29" } ] }
+        ]
+      }
+     ]
+   },
+   
+   {
+    "name" : "L3 LAN", "templateID" : "ID:domaintemplates.NSG-V L3 LAN Domain template"
+   },
+   
+   // Sample VPN design domain with 2 DC sites and 1 remote branch location
+   { "name" : "VPN Overlay",  "templateID" : "ID:domaintemplates.Overlay template",
+     // Need to instantiate the zone template to specify DHCP pools
+     "zones" : [ 
+      {
+        "name" : "DC Site A", "templateID" : "ID:zonetemplates.DC Site A",
+        "subnets" : [
+		 { "name" : "overlay-a", "address" : "10.0.0.0", "netmask" : "255.255.255.0", "gateway" : "10.0.0.1", 
+		   "addressranges" : [ { "minAddress" : "10.0.0.2", "maxAddress" : "10.0.0.10", "DHCPPoolType" : "HOST" } ], "description" : "{\"skip_Openstack\":true}",
+		   "depends" : "ID:subnets.vms"
+		 }
+        ]
+      },
+	  {
+        "name" : "DC Site B", "templateID" : "ID:zonetemplates.DC Site B",
+        "subnets" : [
+		 { "name" : "overlay-b", "address" : "192.168.0.0", "netmask" : "255.255.255.0", "gateway" : "192.168.0.1", 
+		   "addressranges" : [ { "minAddress" : "192.168.0.2", "maxAddress" : "192.168.0.10", "DHCPPoolType" : "HOST" } ], "description" : "{\"skip_Openstack\":true}",
+		   "depends" : "ID:subnets.vms"
+		 }
+        ]
+      },
+	  {
+        "name" : "Remote Site", "templateID" : "ID:zonetemplates.Remote Site",
+        "subnets" : [
+		 { "name" : "vms", "address" : "172.16.1.0", "netmask" : "255.255.255.0", "gateway" : "172.16.1.1", 
+		   "addressranges" : [ { "minAddress" : "172.16.1.2", "maxAddress" : "172.16.1.10" } ], "description" : "For Openstack VMs",
+		   "dhcpoptions" : [
+            // Set a DHCP option to configure the routes to the overlay, in case of multi-vnic VMs
+			{
+			 "type"   : "79", // classless static route, see RFC3442 ( 121 == 79 in hex ). Replaces 'routers' option
+			 "length" : "0d", // 13 bytes hex
+			 "value"  : "080aac10010110ac10ac100101"  // 10.0.0.0/8 via 172.16.1.1, 172.16.0.0/16 via 172.16.1.1
+			}
+           ]
+		 }
+        ]
+      }
+     ]
+   }
+
+ ],
+ 
+ "l2domains" : [
+  { "name" : "L2 LAN1",  "templateID" : "ID:l2domaintemplates.NSG-V LAN L2Domain template" },
+  { "name" : "L2 LAN2",  "templateID" : "ID:l2domaintemplates.NSG-V LAN L2Domain template" }
+ ]
+ 
+}

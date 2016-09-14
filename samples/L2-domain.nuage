@@ -1,0 +1,74 @@
+{  
+ "parameters" : {
+ },
+ 
+ "l2domaintemplates" : [
+  {
+   "name"          : "L2 domain template",
+   "DHCPManaged"   : true,
+   "address" 	   : "10.100.0.0", 
+   "netmask" 	   : "255.255.255.0", 
+   "gateway" 	   : "10.100.0.1",
+   "addressranges" : [ { "minAddress" : "10.100.0.24", "maxAddress" : "10.100.0.24" } ],
+   
+   "ingressacltemplates" : [
+    { "name" : "Sample Ingress policy - allow all",
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+      "active" : true,
+	  "ingressaclentrytemplates" : [		
+		{
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+		  "reflexive"    : false,
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",    // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+	 }
+   ],
+	
+  "egressacltemplates" : [
+    { "name" : "Sample Egress policy - allow all",
+      "active" : true,
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+	  "defaultInstallACLImplicitRules" : true,
+      "egressaclentrytemplates" : [
+        {
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",   // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+    }
+   ]  
+ }
+ ],  
+ 
+ "l2domains" : [ { "name" : "VLAN 2000 domain on Nexus 9k",
+     "description" : "VLAN 1000 10.100.0.0/24", 
+     "templateID" : "ID:l2domaintemplates.L2 domain template",
+     
+	 // Use a specific RT and VNID to integrate with Nexus 9k
+	 "routeTarget" : "1:20000",
+	 "vnId" : 20000,
+	 
+	 "dhcpoptions" : [
+     {
+        "actualType"    : 3,                    // routers servers
+        "actualValues"  : [ "10.100.1.254" ]   // Use underlay DNS server through frontend
+     }
+   }
+  ]
+  
+}

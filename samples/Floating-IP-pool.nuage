@@ -1,0 +1,30 @@
+{ 
+ "parameters" : {
+   "SUBNET"  : "10.100.1.16",
+   "NETMASK" : "255.255.255.240",
+   "ECMP"    : 4	 // Allows for multiple exit gateways in the VPRN
+ },
+ 
+ "sharednetworkresources" : [
+  { "name" : "Sample Floating IP pool",
+    "description" : "Sample Floating IP pool",
+    "type" : "FLOATING",
+    // "underlay" : true,  // Alternative 1: direct to underlay
+    "address" : "${SUBNET}", "netmask" : "${NETMASK}",
+	// "ECMPCount" : "${ECMP}",
+	
+	// "backHaulRouteDistinguisher"
+	"backHaulRouteTarget" : "1:1002",
+	"backHaulVNID" : 999002		// acceptance
+  }  
+ ],
+ 
+ "domains" : [
+ {
+   "name" : "35476aa9-1870-416c-985b-4691bd3d8687",
+   "backHaulRouteTarget" : "1:1002",
+   "backHaulVNID" : 999002		// acceptance
+ }
+ ]
+ 
+}

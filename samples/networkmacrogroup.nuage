@@ -1,0 +1,5 @@
+{
+"networkmacrogroups" : [
+  { "name" : "New DDoS Attacker IPs", "description" : "Auto-updated group with attacker IPs" }
+]
+}

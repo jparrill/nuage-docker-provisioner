@@ -1,0 +1,59 @@
+{
+ "parameters" : {
+ },
+ 
+ // Reference NSG template names
+ "nsgatewaytemplates" : [
+  { "name" : "NSG-V Single Uplink for Redundant Access" }
+ ],
+ 
+ "nsgateways" : [
+  { "name" : "NSG-V B", "templateID" : "ID:nsgatewaytemplates.NSG-V Single Uplink for Redundant Access", "description" : "135.121.110.2",
+    "nsports" : [
+	 { "name" : "LAN", "vlans" : [ { "value" : 123 } ] }		// Reference the VLAN such that we can create a vport
+	]
+  }
+ ],
+ 
+ "domains" : [
+   
+   // VPN overlay with a single NSG-V and a VM-b to ping
+   { "name" : "VPN Overlay",  
+     // Need to instantiate the zone template to create a vport
+     "zones" : [ 
+      {
+        "name" : "DC Site B", 
+        "subnets" : [
+
+		 // NSGs cannot share the same subnet, so use a different one
+		 { "name" : "overlay-b",
+		   
+		   "vports" : [ 
+			 { 
+				"name" : "NSG-B LAN1 VLAN 123",
+				"type" : "HOST",
+				"addressSpoofing" : "DISABLED", 
+				"active" : true,
+				"VLANID" : "ID:vlans.123", // UUID of the VLAN object
+				
+				// Specify the same MAC as done for the VM below
+				"hostinterfaces" : [ { "name" : "nsg-b lan1 vlan 123", "IPAddress" : "192.168.0.2", "MAC" : "00:00:00:00:00:01" } ]
+			 }
+		   ]
+		 }		 
+        ]
+      }
+     ]
+	 
+   }
+ ],
+ 
+ "vms" : [
+  { "name" : "nsg-b", "image" : "NSG-V latest version", "flavor" : "NSG-V", "vnics" : [ "NSG-V WAN Uplink 1 Domain#wan1#135.121.110.2", "L2 LAN#" ] },
+  
+  // Need to use an image that supports VLANs, does not work on ESXi
+  { "name" : "vm-b", "image" : "GRML", "flavor" : "Cloudimage", "vnics" : [ "L2 LAN##101.101.101.2#00:00:00:00:00:01" ] },
+  { "name" : "vm-o", "image" : "GRML", "flavor" : "Cloudimage", "vnics" : [ "VPN Overlay#vms#172.16.1.2" ] }
+ ]
+ 
+}

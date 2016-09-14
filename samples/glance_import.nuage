@@ -1,0 +1,25 @@
+{
+ "parameters" : {
+ },
+
+ "images" : [
+  { "name" : "NSG-V", "url" : "http://135.121.108.6/nuage_install/3.2.R5/unpack/ncpe_centos7.qcow2", "args" : "--min-disk 4 --property hw_disk_bus=ide --property hw_rng_model=virtio --property hypervisor_type=kvm" }
+ ],
+ 
+ "flavors" : [
+  { "name" : "NSG-V", "memory" : 2048, "disk" : 4, "vcpus" : 1 }
+ ],
+ 
+ "domains" : [
+  { "name" : "L3 LAN", 
+    "zones" : [
+	 { "name" : "L3 LAN DC1", "subnets" : [ { "name" : "vnfs-a" } ] }
+	]
+  }
+ ],
+ 
+ "vms" : [
+  { "name" : "nsg-v1-test", "image" : "NSG-V", "flavor" : "NSG-V", "vnics" : [ "L3 LAN:vnfs-a:10.0.0.1" ] }
+ ]
+ 
+}

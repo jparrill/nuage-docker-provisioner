@@ -1,0 +1,53 @@
+{
+ 
+ "domaintemplates" : [
+ {
+  "name" : "NSG-V WAN Domain template",
+  
+  "dhcpoptions" : [
+	// Set a DHCP option to configure the routes to the remote VMs via the NSG-V
+	{
+	 "type"   : "79", // classless static route, see RFC3442 ( 121 == 79 in hex ). Replaces 'routers' option
+	 "length" : "0c", // 12 bytes hex
+	 "value"  : "000a00000110ac100a000001"  // 0.0.0.0/0 via 10.0.0.1, 172.16.0.0/16 via 10.0.0.1 ( workaround CirrOS bug )
+	}
+  ],
+
+  "zonetemplates" : [ 
+   { "name" : "WAN",
+     "dhcpoptions" : [
+            // Set a DHCP option to configure the routes to the remote VMs via the NSG-V
+			{
+			 "type"   : "79", // classless static route, see RFC3442 ( 121 == 79 in hex ). Replaces 'routers' option
+			 "length" : "0c", // 12 bytes hex
+			 "value"  : "000a00000110ac100a000001"  // 0.0.0.0/0 via 10.0.0.1, 172.16.0.0/16 via 10.0.0.1 ( workaround CirrOS bug )
+			}
+     ]
+   }
+  ]
+ }
+],
+ 
+ "domains" : [
+   { "name" : "NSG-V WAN Uplink 1 Domain",  "templateID" : "ID:domaintemplates.NSG-V WAN Domain template",
+     // Need to instantiate a zone to specify DHCP options
+     "zones" : [ 
+      {
+        "name" : "WAN", "templateID" : "ID:zonetemplates.WAN",
+        "dhcpoptions" : [
+         {
+            "actualType"    : 6,              // DNS servers
+            "actualValues"  : [ "1.2.3." ]   // Use the VNS proxy as DNS server to resolve its own IP
+         },
+ 		 {
+			 "type"   : "4",    // Time server, IP address
+			 "length" : "02",   // too little but even
+			 "value"  : "0102"  // 1.2
+		 }
+        ]
+      }
+     ]
+   }
+ ]
+ 
+}

@@ -1,0 +1,114 @@
+{
+ "parameters" : {
+ },
+ 
+ // Reference NSG template names
+ "nsgatewaytemplates" : [
+  { "name" : "NSG-V Single Uplink for Redundant Access" }
+ ],
+ 
+ "nsgateways" : [
+  { "name" : "NSG-V C1", "templateID" : "ID:nsgatewaytemplates.NSG-V Single Uplink for Redundant Access", "description" : "135.121.110.3" },
+  { "name" : "NSG-V C2", "templateID" : "ID:nsgatewaytemplates.NSG-V Single Uplink for Redundant Access", "description" : "135.121.110.4" },
+  { "name" : "NSG-V D1", "templateID" : "ID:nsgatewaytemplates.NSG-V Single Uplink for Redundant Access", "description" : "135.121.110.5" },
+  { "name" : "NSG-V D2", "templateID" : "ID:nsgatewaytemplates.NSG-V Single Uplink for Redundant Access", "description" : "135.121.110.6" }
+ ],
+ 
+ "nsgredundancygroups" : [
+  { "name" : "Redundant NSG-V C", 
+    "gatewayPeer1ID" : "ID:nsgateways.NSG-V C1",
+	"gatewayPeer2ID" : "ID:nsgateways.NSG-V C2",
+	"heartbeatVLANID" : 4094,
+	"nsredundantports" : [
+     { "name" : "LAN", "physicalName" : "port2", "portType" : "ACCESS", "VLANRange" : "1-4094", "vlans" : [ { "value" : 123, "description" : "User Traffic" } ] }
+    ]
+  },
+  { "name" : "Redundant NSG-V D", 
+    "gatewayPeer1ID" : "ID:nsgateways.NSG-V D1",
+	"gatewayPeer2ID" : "ID:nsgateways.NSG-V D2",
+	"heartbeatVLANID" : 0,
+	"nsredundantports" : [
+	 { "name" : "LAN", "physicalName" : "port2", "portType" : "ACCESS", "VLANRange" : "0", "vlans" : [ { "value" : 0 } ] }		/* VLAN 0 is created as control VLAN */
+    ]
+  }
+ ],
+ 
+ "domains" : [
+   
+   // VPN overlay with a single NSG-V and a VM-b to ping
+   { "name" : "VPN Overlay",  
+     // Need to instantiate the zone template to create a vport
+     "zones" : [ 
+      {
+        "name" : "Remote Site", 
+        "subnets" : [
+
+		 // NSGs cannot share the same subnet, so create a different one
+		 { "name" : "c", "address" : "172.16.0.0", "netmask" : "255.255.255.0", "gateway" : "172.16.0.1", "description" : "{\"skip_Openstack\":true}",
+		   
+		   "vports" : [ 
+			 { 
+				"name" : "NSG-C LAN1 VLAN 123",
+				"type" : "HOST",
+				"addressSpoofing" : "DISABLED", 
+				"active" : true,
+				"VLANID" : "ID:vlans.123", // UUID of the VLAN object
+				
+				// Specify the same MAC as done for the VM below
+				"hostinterfaces" : [ { "name" : "nsg-c lan1 vlan 123", "IPAddress" : "172.16.0.2", "MAC" : "00:00:00:00:00:01" } ]
+			 }
+		   ]
+		 },
+		 { "name" : "d", "address" : "172.16.2.0", "netmask" : "255.255.255.0", "gateway" : "172.16.2.1", "description" : "{\"skip_Openstack\":true}",
+		   
+		   "vports" : [ 
+			 { 
+				"name" : "NSG-D LAN1 untagged",
+				"type" : "BRIDGE",
+				"addressSpoofing" : "ENABLED", 
+				"active" : true,
+				"VLANID" : "ID:vlans.0", // UUID of the VLAN object
+				
+				"bridgeinterfaces" : [ { "name" : "nsg-d lan1 redundant" } ]
+			 }
+		   ]
+		 }
+        ]
+      }
+     ]
+   },
+   
+   {
+    "name" : "L3 LAN", 
+	"zones" : [
+	 { "name" : "L3 LAN D", 
+	   "subnets" : [
+	    { "name" : "d", "address" : "172.16.2.0", "netmask" : "255.255.255.0", "gateway" : "172.16.2.254",
+	      "dhcpoptions" : [
+            // Set a DHCP option to configure the routes to the remote VMs via the NSG-V
+			{
+			 "type"   : "79", // classless static route, see RFC3442 ( 121 == 79 in hex ). Replaces 'routers' option
+			 "length" : "0c", // 12 bytes hex
+			 "value"  : "00ac10020110ac10ac100201"  // 0.0.0.0/0 via 172.16.2.1, 172.16.0.0/16 via 172.16.2.1
+			}
+         ]
+	    }
+	   ]
+	 }
+	]
+   }
+ ],
+ 
+ "vms" : [
+  // Note: Could also share a single L2 domain, and use different VLANs for different test cases
+  { "name" : "nsg-c1", "image" : "NSG-V latest version", "flavor" : "NSG-V", "vnics" : [ "NSG-V WAN Uplink 1 Domain#wan1#135.121.110.3", "L2 LAN C#" ] },
+  { "name" : "nsg-c2", "image" : "NSG-V latest version", "flavor" : "NSG-V", "vnics" : [ "NSG-V WAN Uplink 1 Domain#wan1#135.121.110.4", "L2 LAN C#" ] },
+  { "name" : "nsg-d1", "image" : "NSG-V latest version", "flavor" : "NSG-V", "vnics" : [ "NSG-V WAN Uplink 1 Domain#wan1#135.121.110.5", "L3 LAN#d#172.16.2.5" ] },
+  { "name" : "nsg-d2", "image" : "NSG-V latest version", "flavor" : "NSG-V", "vnics" : [ "NSG-V WAN Uplink 1 Domain#wan1#135.121.110.6", "L3 LAN#d#172.16.2.6" ] },
+  
+  // Need to use an image that supports VLANs, does not work on ESXi
+  { "name" : "vm-c", "image" : "GRML", "flavor" : "Cloudimage", "vnics" : [ "L2 LAN C##101.101.101.2#00:00:00:00:00:01" ] },
+  { "name" : "vm-d", "image" : "CirrOS", "flavor" : "Cloudimage", "vnics" : [ "L3 LAN#d#172.16.2.2" ] }
+ ]
+ 
+}

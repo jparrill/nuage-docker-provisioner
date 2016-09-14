@@ -1,0 +1,77 @@
+{  
+ "parameters" : {
+   "VRSG_ID" : "10.9.0.26",		 // Name of the VRS-G, typically == datapath IP
+   "BASE"    : "10.159.202",
+   "GW_MAC"  : "e4:11:5b:99:a9:0d"	 // MAC address of gateway VLAN interface for uplink subnet
+ },
+
+ "gateways" : [
+   { "name" : "${VRSG_ID}",
+     "ports" : [
+	 { "name" : "eth1", 
+	   "vlans" : [ 
+		{ "userMnemonic" : "ext-net", "value" : 0 }
+	   ] 
+	 }
+	 ]
+  }
+ ],
+ 
+ "sharednetworkresources" : [
+  // Create both in the same shared domain, such that we can use a single VRS-G uplink VLAN
+  // Need to create this one first, only Floating IP honors 'sharedResourceParentID'
+  { "name" : "Shared subnet using VRS-G",
+    "description" : "Shared subnet for VM management",
+    "type" : "PUBLIC",
+	"address" : "${BASE}.0", "netmask" : "255.255.255.240", "gateway" : "${BASE}.14",
+	
+	"addressranges" : [ 
+	  { "minAddress" : "${BASE}.1", "maxAddress" : "${BASE}.4", "externalID" : "openstack:4" } 
+	],
+	
+	"dhcpoptions" : [
+        // Set a DHCP option to configure the routes in the VMs
+		{
+         "type": "03",  // Routers
+         "value": "00", // No default route
+         "length": "01" 
+        },
+        {
+         "type"   : "79", // classless static route, see RFC3442 ( 121 == 79 in hex ). Replaces 'routers' option
+         "length" : "07", // 7 bytes hex
+         "value"  : "10ac100a9fca0e"  // 172.16.0.0/16 via 10.159.202.14
+        }
+    ]
+
+  },
+  { "name" : "Floating IP to underlay",
+    "description" : "Floating IP to underlay",
+    "type" : "FLOATING",
+	"underlay" : true,	// Alternative 1: direct to underlay
+	"address" : "${BASE}.32", "netmask" : "255.255.255.240"
+  },
+  { "name" : "Floating IP using VRS-G",
+    "description" : "Floating IP for VM management",
+    "type" : "FLOATING",
+	"address" : "${BASE}.16", "netmask" : "255.255.255.240",
+	//
+	// Alternative 2: Regular floating IPs using same WAN service
+	//
+	"sharedResourceParentID" : "parentID:sharednetworkresources.Shared subnet using VRS-G"
+  },
+  {
+   "name": "Uplink subnet",
+    "description": "uplink subnet",
+    "address": "192.0.0.0",
+    "netmask": "255.255.255.252",
+    "gateway": "192.0.0.1",
+    "type": "UPLINK_SUBNET",
+    "uplinkInterfaceIP" : "192.0.0.2",
+    "uplinkInterfaceMAC" : "${GW_MAC}",
+    "sharedResourceParentID" : "parentID:sharednetworkresources.Shared subnet using VRS-G",
+    "uplinkGWVlanAttachmentID" : "ID:vlans.ext-net",
+    "uplinkVPortName" : "uplink vport VLAN"
+  }
+  
+ ]
+}

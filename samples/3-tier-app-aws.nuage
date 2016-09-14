@@ -1,0 +1,245 @@
+{
+ "parameters" : {
+	"version" : 1
+ },
+
+ "enterprisenetworks" : [
+   { "name" : "DNS servers", "address" : "100.10.20.0", "netmask" : "255.255.255.0" },  // Subnet where DNS servers reside
+   { "name" : "Management",  "address" : "100.10.30.0", "netmask" : "255.255.255.0" }   // Subnet with management terminals
+ ],
+
+ "groups" : [
+  { "name" : "Developers" }, { "name" : "Operations" }, { "name" : "Testers" }
+ ],
+
+ "domaintemplates" : [
+ {
+  "name" : "3-tier App Template",
+  "zonetemplates" : [ 
+    { "name" : "1 - Web", "subnettemplates" : [ { "name" : "web1", "address" : "135.121.110.128", "netmask" : "255.255.255.128", "gateway" : "135.121.110.254",
+  	  "addressranges" : [ { "minAddress" : "135.121.110.130", "maxAddress" : "135.121.110.140" } ] } ] },
+	
+    { "name" : "2 - Business Logic", "subnettemplates" : [ { "name" : "bl1", "address" : "10.1.0.0", "netmask" : "255.255.255.0" } ] }, 
+    { "name" : "3 - Databases", "subnettemplates" : [ { "name" : "db1", "address" : "10.2.0.0", "netmask" : "255.255.255.0" } ] } 
+  ],
+
+  "ingressacltemplates" : [
+    { "name" : "Default Ingress policy",
+	  "defaultAllowIP" : false,
+      "defaultAllowNonIP" : false,
+      "active" : true,
+	  "ingressaclentrytemplates" : [
+		{
+		  "priority"     : 100,
+		  "description"  : "Allow HTTPS (reflexive)",
+		  "reflexive"    : true,
+          "locationType" : "ANY",    // source
+		  "networkType"  : "ZONE",   // destination
+		  "networkID"    : "ID:zonetemplates.1 - Web",
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "6",      // TCP
+          "sourcePort"   : "1024-65535",	 
+          "destinationPort" : "8443",	// https
+          "action"       : "FORWARD"
+        },
+		{
+		  "priority"     : 201,
+		  "description"  : "Allow Web to BL (reflexive)",
+		  "reflexive"    : true,
+          "locationType"  : "ZONE",    // source
+		  "locationID"    : "ID:zonetemplates.1 - Web", // Gets resolved to ID
+          "networkType" : "ZONE",   // destination
+		  "networkID"   : "ID:zonetemplates.2 - Business Logic",
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "6",      	// TCP
+          "sourcePort"      : "1024-65535",   // Tomcat Application server
+          "destinationPort" : "8080",  
+          "action"       : "FORWARD"
+        }, 
+		{
+		  "priority"     : 301,
+		  "description"  : "Allow BL to DB (reflexive)",
+		  "reflexive"    : true,
+          "locationType"  : "ZONE",    // source
+		  "locationID"    : "ID:zonetemplates.2 - Business Logic", // Gets resolved to ID
+          "networkType" : "ZONE",   // destination
+		  "networkID"   : "ID:zonetemplates.3 - Databases",
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "6",        // TCP
+          "sourcePort"      : "1024-65535",  
+          "destinationPort" : "3306",  // MySQL
+          "action"       : "FORWARD"
+        },
+        {
+		  "priority"     : 402,
+		  "description"  : "Allow DNS to internal servers (reflexive)",
+		  "reflexive"    : true,
+          "networkType"  : "ENTERPRISE_NETWORK",    // destination
+		  "networkID"    : "ID:enterprisenetworks.DNS servers", // Gets resolved to ID
+          "locationType" : "ANY",   // source
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "17",     // UDP, should also allow TCP
+          "sourcePort"      : "*",
+          "destinationPort" : "53",  // DNS
+          "action"       : "FORWARD"
+        },		
+		{
+		  "priority"     : 999,
+		  "description"  : "Drop anything else",
+		  "reflexive"    : false,
+          "networkType"  : "ANY",   // source
+          "locationType" : "ANY",   // destination
+          "etherType"    : "0x0800",
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "DROP"
+        }
+      ]
+	 }
+  ],
+	
+  "egressacltemplates" : [
+    { "name" : "Default 3-tier Egress policy",
+      "active" : true,
+	  "defaultAllowIP" : false,
+      "defaultAllowNonIP" : false,
+	  "defaultInstallACLImplicitRules" : false,
+      "egressaclentrytemplates" : [
+        {
+		  "priority"     : 100,
+		  "description"  : "Allow HTTPS requests",
+		  "reflexive"    : true,
+          "networkType"  : "ANY",    // source
+          "locationType" : "ZONE",   // destination
+		  "locationID"   : "ID:zonetemplates.1 - Web",
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "6",      // TCP
+          "sourcePort"   : "1024-65535",
+          "destinationPort" : "8443",  // https
+          "action"       : "FORWARD"
+        },
+		{
+		  "priority"     : 201,
+		  "description"  : "Allow Web to BL (reflexive)",
+		  "reflexive"    : true,
+          "networkType"  : "ZONE",    // source
+		  "networkID"    : "ID:zonetemplates.1 - Web", // Gets resolved to ID
+          "locationType" : "ZONE",   // destination
+		  "locationID"   : "ID:zonetemplates.2 - Business Logic",
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "6",      	// TCP
+          "sourcePort"      : "1024-65535",   
+          "destinationPort" : "8080",   // Tomcat Application server
+          "action"       : "FORWARD"
+        }, 
+		{
+		  "priority"     : 301,
+		  "description"  : "Allow BL to DB (reflexive)",
+		  "reflexive"    : true,
+          "networkType"  : "ZONE",    // source
+		  "networkID"    : "ID:zonetemplates.2 - Business Logic", // Gets resolved to ID
+          "locationType" : "ZONE",   // destination
+		  "locationID"   : "ID:zonetemplates.3 - Databases",
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "6",        // TCP
+          "sourcePort"      : "1024-65535",  
+          "destinationPort" : "3306",  // MySQL
+          "action"       : "FORWARD"
+        },
+		{
+		  "priority"     : 401,
+		  "description"  : "Allow SSH from management (reflexive)",
+		  "reflexive"    : true,
+          "networkType"  : "ENTERPRISE_NETWORK",    // destination
+		  "networkID"    : "ID:enterprisenetworks.Management", // Gets resolved to ID
+          "locationType" : "ANY",   // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "6",      // TCP
+          "sourcePort"      : "*",  
+          "destinationPort" : "22",  // SSH 
+          "action"       : "FORWARD"
+        }
+      ]
+    }
+   ]  
+  } 
+ ],
+ 
+ // TODO Set permissions for Developers to see Dev / attach VMs to Dev, etc. 
+ "domains" : [
+   { "name" : "3-tier app demo v${version}",  "templateID" : "ID:domaintemplates.3-tier App Template" }
+ ],
+ 
+ /** Syntax: see http://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/CloudFormation.html#createStack-property **/
+ "aws-stacks" : [
+  {
+	// This is a custom addition to select the AWS region to create the stack in
+	"region" : "us-east-1",
+	
+	"StackName": "MyNuageAWSStack", /* required */
+	"Capabilities" : [
+		"CAPABILITY_IAM"
+		/* , more items */
+	],
+	// "DisableRollback" : false,
+
+	/*
+	NotificationARNs: [
+    'STRING_VALUE',
+    // more items
+    ],
+	*/
+	
+	"OnFailure" : "ROLLBACK", // 'DO_NOTHING | ROLLBACK | DELETE'
+	
+	"Parameters": [
+     {
+      "ParameterKey"   : "STRING_VALUE",
+      "ParameterValue" : "STRING_VALUE"
+      // UsePreviousValue: true || false
+     }
+     /* , more items */
+    ],
+  
+	/* ResourceTypes: [
+    'STRING_VALUE',
+    // more items
+       ],
+	*/
+	
+	// "StackPolicyBody": 'STRING_VALUE',
+	
+	// StackPolicyURL: 'STRING_VALUE',
+	"Tags" : [
+    {
+      "Key"  : "Name",
+      "Value" : "123"
+    }
+    /* , more items */
+  ],
+  
+  "TemplateBody" : {
+	"Outputs" : {
+     "AWSRegion": {
+      "Description": "AWS region selected",
+      "Value": {
+        "Ref": "AWS::Region"
+      }
+     }
+	}
+  },
+  // TemplateURL: 'STRING_VALUE',
+  
+  "TimeoutInMinutes": 10
+  }
+ ]
+ 
+}

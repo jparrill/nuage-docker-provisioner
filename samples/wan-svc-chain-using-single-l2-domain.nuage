@@ -1,0 +1,111 @@
+/*
+ * WAN service chaining demo using a single L2 domain
+ *
+ * Instructions:
+ 1) Import this script: ( may need to run 2 times, assign gateway permissions to $ORG after running once, then re-run )
+    docker run -i --rm -e OS_USERNAME=admin -e OS_PASSWORD=admin -e OS_AUTH_URL=http://osc-kilo.nuage.local:35357/v2.0 -e OS_TENANT_NAME="demo" \
+      --add-host=osc-kilo.nuage.local:${OS} nuage/import ${VSD_IP} "${ORG}" < ${SCRIPT_NAME}
+ 2) Assign permissions & attach the WAN service to the L2 domain to enable the default gateway ( needed if using cloud init script )
+ 3) Get the subnet ID: 
+    NET=`neutron net-show "Service Chain domain" -f value -F id`
+ 4) Launch a vFW VM with 2 vNICs attached to the same L2 network: 
+    nova boot --flavor m1.small --image wily-server-cloudimg-amd64-disk1.img --nic net-id=$NET,v4-fixed-ip=10.0.0.2 --nic net-id=$NET,v4-fixed-ip=10.0.0.3 --user-data cloud_init_script.sh vfw 
+ 5) Apply both redirect targets to the NICs
+ 6) Figure out which ESI values VSD assigned, and create IP filters in 7750
+*/
+
+{  
+ "parameters" : {
+	"dc-pe-name" : "dc1-pe"	// Name of your 7750 gateway, organization needs permissions at the gw level
+ },
+ 
+ "gateways" : [ 
+  { "name" : "${dc-pe-name}", "services" : [ 
+    { "name" : "Service Chain", "WANServiceIdentifier" : "svc-chain", "serviceType" : "L2", "configType" : "DYNAMIC", "IRBEnabled" : true, "servicePolicy" : "l2-irb", "description" : "Redirects traffic to VNFs" }
+    ] 
+  }
+ ],
+ 
+ "l2domaintemplates" : [
+  {
+   "name"          : "Service Chaining L2 domain template",
+   "DHCPManaged"   : true,
+   "address" 	   : "10.0.0.0", 
+   "netmask" 	   : "255.255.255.0", 
+   "gateway" 	   : "10.0.0.1",	// gateway address, resides on 7750 interface
+   "addressranges" : [ { "minAddress" : "10.0.0.2", "maxAddress" : "10.0.0.3" } ],
+   
+   "ingressacltemplates" : [
+    { "name" : "Service Chain Ingress policy",
+	  "description" : "Allow all",
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+      "active" : true,
+	  "ingressaclentrytemplates" : [		
+		{
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+		  "reflexive"    : false,
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",    // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+	 }
+   ],
+	
+  "egressacltemplates" : [
+    { "name" : "Service Chain Egress policy",
+	  "description" : "Allow all",
+      "active" : true,
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+	  "defaultInstallACLImplicitRules" : true,
+      "egressaclentrytemplates" : [
+        {
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",   // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+    }
+   ] 
+ }
+ ], 
+ 
+ "l2domains" : [ 
+   { "name" : "Service Chain domain",
+     "description" : "L2 domain for service chaining to VNFs", 
+     "templateID" : "ID:l2domaintemplates.Service Chaining L2 domain template",
+	 
+	 "redirectiontargets" : [
+	  // Note: no point to set the 'ESI', VSD overwrites it with a unique value upon assignment to the VM vport
+      { "name" : "FW-INSIDE",  "endPointType" : "VIRTUAL_WIRE", "description" : "To be applied to eth1 10.0.0.3" },
+	  { "name" : "FW-OUTSIDE", "endPointType" : "VIRTUAL_WIRE", "description" : "To be applied to eth0 10.0.0.2" }
+     ],
+	 "dhcpoptions" : [
+	    {
+            "type"		: "03",  // Default gateway, Linux VM configured to use eth0 for this
+			"length"	: "04",
+            "value"		: "0a000001"
+        }
+        /* Could set a DHCP option to configure the routes to CE1, but VM must be configured to use right interface for this
+        {
+         "type"   : "79", // classless static route, see RFC3442 ( 121 == 79 in hex )
+         "length" : "09",
+         "value"  : "1e140000000a000001"  // 20.0.0.0/30 via 10.0.0.1
+        }
+		*/
+      ]
+   }
+  ]
+  
+}

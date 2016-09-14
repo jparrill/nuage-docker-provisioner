@@ -1,0 +1,149 @@
+{
+ "parameters" : {
+ },
+
+ // Reference NSG template names
+ "nsgatewaytemplates" : [
+  { "name" : "NSG-V Single Uplink with 2 LAN ports" }
+ ],
+ 
+ "nsgateways" : [
+  { "name" : "NSG-V AWS", "templateID" : "ID:nsgatewaytemplates.NSG-V Single Uplink with 2 LAN ports", "description" : "135.121.110.1",
+    "nsports" : [
+	 { "name" : "LAN-uplink", "vlans" : [ { "value" : 0, "userMnemonic" : "lan1" } ] },
+	 { "name" : "LAN-vnfs",   "vlans" : [ { "value" : 0, "userMnemonic" : "lan2" } ] }
+	]
+  }
+ ],
+ 
+ "domaintemplates" : [
+ {
+  "name" : "Data Vault Template",
+  "zonetemplates" : [ { "name" : "AWS us-west1 VPC1" }, { "name" : "FNMA DC1" } ],
+  
+  "ingressacltemplates" : [
+    { "name" : "Overlay Ingress policy",
+	  "description" : "Allow all",
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+      "active" : true,
+	  "ingressaclentrytemplates" : [		
+		{
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+		  "reflexive"    : false,
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",    // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+	 }
+   ],
+	
+  "egressacltemplates" : [
+    { "name" : "Overlay Egress policy",
+	  "description" : "Allow all",
+      "active" : true,
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+	  "defaultInstallACLImplicitRules" : true,
+      "egressaclentrytemplates" : [
+        {
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",   // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+    }
+   ] 
+ }
+ ],
+ 
+ 
+ "domains" : [
+   
+   // AWS overlay containing a single NSG-V with 2 LAN ports
+   { "name" : "Data Vault",
+     "templateID" : "ID:domaintemplates.Data Vault Template",
+	 
+	 // Global DHCP option for DNS
+	 "dhcpoptions" : [
+        // Set a DHCP option to configure the routes to the overlay, in case of multi-vnic VMs
+		{
+		 "type"   : "06",  // DNS servers
+		 "length" : "04",  // 4 bytes hex
+		 "value"  : [ "135.121.108.6" ]  // 10.0.0.0/8 via 172.16.1.1, 172.16.0.0/16 via 172.16.1.1
+		}
+    ],
+	 
+	 
+     // Need to instantiate the zone template to connect vports
+     "zones" : [ 
+      {
+        "name" : "AWS us-west1 VPC1",
+        "subnets" : [
+		
+		 // Make sure the GW MAC in subnet "overlay-a" does not conflict with the VRS GW MAC in the LAN subnet
+		 { "name" : "fv-web-tier",
+		   "address" : "10.0.0.0", "netmask" : "255.255.255.0", "gateway" : "10.0.0.1", 
+		   "addressranges" : [ { "minAddress" : "10.0.0.2", "maxAddress" : "10.0.0.10", "DHCPPoolType" : "BRIDGE" } ], "description" : "{\"skip_Openstack\":true}",
+		   
+		   "vports" : [ 
+			 { 
+				"name" : "NSG-A LAN1 untagged",
+				"type" : "BRIDGE",
+				"addressSpoofing" : "ENABLED", 
+				"active" : true,
+				"VLANID" : "ID:vlans.lan1",					// UUID of the VLAN object
+				"bridgeinterfaces" : [ { "name" : "nsg-a lan1" } ]
+			 }
+		   ]
+		 },
+		 { "name"    : "nuage-vnfs", 
+		   "address" : "10.0.1.0",
+           "netmask" : "255.255.255.0", 
+		   "gateway" : "10.0.1.1",
+		   "description" : "{\"skip_Openstack\":true}",
+		   "vports" : [ 
+			 { 
+				"name" : "NSG-A LAN2 untagged",
+				"type" : "HOST",
+				"addressSpoofing" : "DISABLED", 
+				"active" : true,
+				"VLANID" : "ID:vlans.lan2"	// UUID of the VLAN object
+			 }
+		   ]
+		 }
+		 		 
+        ]
+      },
+	  {
+        "name" : "FNMA DC1",
+        "subnets" : [
+		 { "name" : "fv-dc1-web",
+		   "description" : "VMs running in DC1",
+		   "address" : "172.16.0.0", "netmask" : "255.255.255.0", "gateway" : "172.16.0.1", 
+		   "addressranges" : [ { "minAddress" : "172.16.0.2", "maxAddress" : "172.16.0.10", "DHCPPoolType" : "HOST" } ]
+	     }
+        ]
+      }
+     ]	  
+   }
+ ],
+ 
+ "vms" : [
+  // NSG with 3 ports
+  { "name" : "nsg-a", "image" : "NSG-V latest version", "flavor" : "NSG-V", "vnics" : [ "NSG-V WAN Uplink 1 Domain#wan1#135.121.110.1", "L2 LAN1##101.101.101.2", "L2 LAN2##101.101.101.2" ] },
+  { "name" : "vm-in-aws", "image" : "GRML", "flavor" : "Cloudimage", "vnics" : [ "L2 LAN1##" ] },
+  { "name" : "vm-in-dc", "image" : "GRML", "flavor" : "Cloudimage", "vnics" : [ "Data Vault#fv-dc1-web#172.16.0.2" ] }
+ ]
+ 
+}

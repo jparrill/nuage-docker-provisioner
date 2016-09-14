@@ -1,0 +1,94 @@
+{  
+ "parameters" : {
+	"gw" : "7850 VSG",	// Name of your gateway
+	"scale" : 10,		// number of L2 domains to create
+	"vlan" : 1
+ },
+ 
+ "gateways" : [ 
+  { "name" : "${gw}", "ports" : [ 
+    { "name" : "lag-1", "vlans" : [ { "#count" : 10, "userMnemonic" : "port1-vlan-${#count+100}", "value" : "${#count+100}" } ] },
+	{ "name" : "lag-2", "vlans" : [ { "#count" : 10, "userMnemonic" : "port2-vlan-${#count+100}", "value" : "${#count+100}" } ] } 
+    ] 
+  }
+ ],
+ 
+ "l2domaintemplates" : [
+  {
+   "#count" : 4,
+   "name"          : "L2 domain template",
+   "DHCPManaged"   : true,
+   "address" 	   : "10.${Math.floor(#count/100)}.${#count%100+100}.0", 
+   "netmask" 	   : "255.255.255.0", 
+   "gateway" 	   : "10.${Math.floor(#count/100)}.${#count%100+100}.254",	// gateway not passed in DHCP, set as DHCP server ID
+   "addressranges" : [ { "minAddress" : "10.${Math.floor(#count/100)}.${#count%100+100}.1", "maxAddress" : "10.${Math.floor(#count/100)}.${#count%100+100}.2" } ],
+   
+   "ingressacltemplates" : [
+    { "name" : "Sample Ingress policy - allow all",
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+      "active" : true,
+	  "ingressaclentrytemplates" : [		
+		{
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+		  "reflexive"    : false,
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",    // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+	 }
+   ],
+	
+  "egressacltemplates" : [
+    { "name" : "Sample Egress policy - allow all",
+      "active" : true,
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+	  "defaultInstallACLImplicitRules" : true,
+      "egressaclentrytemplates" : [
+        {
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",   // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+    }
+   ]  
+ }
+ ],  
+ 
+ "l2domains" : [ { "#count" : 2, "name" : "VLAN domain",
+     "description" : "VLAN ${#count+100} L2 domain with a VLAN between 2 VSG ports", 
+     "templateID" : "ID:l2domaintemplates.L2 domain template ${#count}",
+     "vports" : [ 
+     { 
+		"name" : "Port 1",
+		"type" : "BRIDGE",	// case sensitive "VM", "HOST", "BRIDGE"
+		"addressSpoofing" : "ENABLED", 
+		"active" : true,
+		"VLANID" : "ID:vlans.port1-vlan-${#count+100}",		// UUID of the VLAN object
+		"bridgeinterfaces" : [ { "name" : "port1" } ]
+	 },
+	 { 
+		"name" : "Port 2",
+		"type" : "BRIDGE",	// case sensitive "VM", "HOST", "BRIDGE"
+		"addressSpoofing" : "ENABLED", 
+		"active" : true,
+		"VLANID" : "ID:vlans.port2-vlan-${#count+100}",		// UUID of the VLAN object
+		"bridgeinterfaces" : [ { "name" : "port2" } ]
+	 }
+	 ]
+   }
+  ]
+  
+}

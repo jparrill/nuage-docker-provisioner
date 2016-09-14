@@ -1,0 +1,60 @@
+{ 
+ "parameters" : {
+   "flag" : "ASK: Sample conditional flag, prompting the user to make a choice"
+ },
+
+ "$if:flag" : {
+ 
+ "sharednetworkresources" : [
+  // Create both in the same shared domain, such that we can use a single WAN service
+  // Need to create this one first, only Floating IP honors 'sharedResourceParentID'
+  { "name" : "Shared subnet",
+    "description" : "Shared subnet for webRTC and CDN client access",
+    "type" : "PUBLIC",
+	"address" : "${BASE}.0", "netmask" : "255.255.255.240", "gateway" : "${BASE}.14",
+	
+	"addressranges" : [ { "minAddress" : "${BASE}.1", "maxAddress" : "${BASE}.4", "externalID" : "openstack:4" } ],
+	
+	"ECMPCount" : 8,
+	"staticroutes" : [
+	 { "address" : "${VIP}", "netmask" : "255.255.255.255", "nextHopIp" : "${BASE}.1" }
+	 
+	 /*
+	  * Don't pre-create the rest, do it manually once the VM application is ready
+	  *
+	 
+	 { "address" : "${VIP}", "netmask" : "255.255.255.255", "nextHopIp" : "${BASE}.2" },
+	 { "address" : "${VIP}", "netmask" : "255.255.255.255", "nextHopIp" : "${BASE}.3" },
+	 { "address" : "${VIP}", "netmask" : "255.255.255.255", "nextHopIp" : "${BASE}.4" },
+	 { "address" : "${VIP}", "netmask" : "255.255.255.255", "nextHopIp" : "${BASE}.5" },
+	 { "address" : "${VIP}", "netmask" : "255.255.255.255", "nextHopIp" : "${BASE}.6" },
+	 { "address" : "${VIP}", "netmask" : "255.255.255.255", "nextHopIp" : "${BASE}.7" },
+	 { "address" : "${VIP}", "netmask" : "255.255.255.255", "nextHopIp" : "${BASE}.8" }
+	 
+	 */
+	]
+  },
+  { "name" : "Floating IP to underlay",
+    "description" : "Floating IP for provisioning users / DNS access (underlay)",
+    "type" : "FLOATING",
+	"underlay" : true,	// Alternative 1: direct to underlay
+	"address" : "${BASE}.16", "netmask" : "255.255.255.240"
+  },
+  { "name" : "Floating IP using same WAN service",
+    "description" : "Floating IP for provisioning users / DNS access using same WAN service",
+    "type" : "FLOATING",
+	"address" : "${BASE}.16", "netmask" : "255.255.255.240",
+	//
+	// Alternative 2: Regular floating IPs using same WAN service
+	//
+	"sharedResourceParentID" : "parentID:sharednetworkresources.Shared subnet"
+  } 
+ ]
+ 
+ }, // end if
+ 
+"$if-not:flag" : {
+ "some other construct" : { "x" : true }
+}
+ 
+}

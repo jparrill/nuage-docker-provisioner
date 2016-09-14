@@ -1,0 +1,177 @@
+{  
+ "parameters" : {
+	"vlan" : 3
+ },
+
+  // User 'docker' is used to launch containers, needs to be member of 'admin' group!
+  "users" : [
+   { "userName" : "docker", "firstName" : "demo", "lastName" : "account", "email" : "docker@nuage.net",
+     "password" : "a9993e364706816aba3e25717850c26c9cd0d89d" }
+  ],
+
+ /*
+  S1: mlag8 (s227/s228)
+  S2: mlag6 (s227/s228)
+  S3: mlag7 (s227/s228)
+  S4: mlag4 (s224/s226)
+  S5: mlag6 (s224/s226)
+*/
+ 
+ "gateways" : [
+   { "name" : "POD1",
+     "ports" : [
+	 { "name" : "mlag-pod1:::Mlag5", "vlans" : [ 
+		{ "userMnemonic" : "pod1-ixia", "value" : "${vlan}" }
+		] 
+	 },
+	 { "name" : "sn228.sjc.aristanetworks.com:::Ethernet1", "vlans" : [ 
+		{ "userMnemonic" : "sn228-orphan", "value" : "${vlan}" }
+		] 
+	 }
+	 ]
+   },
+   { "name" : "POD2",
+     "ports" : [
+	 { "name" : "mlag-pod2:::Mlag5", "vlans" : [ 
+		{ "userMnemonic" : "pod2-ixia", "value" : "${vlan}" }
+		] 
+	 },
+	 { "name" : "sn226.sjc.aristanetworks.com:::Ethernet1", "vlans" : [ 
+		{ "userMnemonic" : "sn226-orphan", "value" : "${vlan}" }
+		] 
+	 },
+	 { "name" : "mlag-pod2:::Mlag3", "vlans" : [ 
+		{ "userMnemonic" : "pod2-b12", "value" : "${vlan}" }
+		] 
+	 }
+	 ]
+   },
+   { "name" : "POD3",
+     "ports" : [
+	 { "name" : "mlag-serviceleaf:::Mlag6", "vlans" : [ 
+		{ "userMnemonic" : "pod3-gw", "value" : "${vlan}" }
+		] 
+	 }
+	 ]
+   }
+ ],
+ 
+ "l2domaintemplates" : [
+  { 
+   "name"          : "VLAN ${vlan} L2 domain template - scripted",
+   "DHCPManaged"   : true,
+   "address" 	   : "10.255.${vlan}.0", 
+   "netmask" 	   : "255.255.255.0", 
+   "gateway" 	   : "10.255.${vlan}.254",	// gateway not passed in DHCP, set as DHCP server ID
+   "addressranges" : [ { "minAddress" : "10.255.${vlan}.25", "maxAddress" : "10.255.${vlan}.25" } ],
+   
+   "ingressacltemplates" : [
+    { "name" : "Sample Ingress policy - allow all",
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+      "active" : true,
+	  "ingressaclentrytemplates" : [		
+		{
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+		  "reflexive"    : false,
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",    // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+	 }
+   ],
+	
+  "egressacltemplates" : [
+    { "name" : "Sample Egress policy - allow all",
+      "active" : true,
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+	  "defaultInstallACLImplicitRules" : true,
+      "egressaclentrytemplates" : [
+        {
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",   // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          // "sourcePort"   : "1024-65535",
+          // "destinationPort" : "80",   // http
+          "action"       : "FORWARD"
+        }
+      ]
+    }
+   ]  
+ }
+ ],  
+ 
+ "l2domains" : [ { "name" : "Config 1 VLAN ${vlan}",
+     "description" : "VLAN ${vlan} L2 domain with BMS, gateway, IXIA ports", 
+     "templateID" : "ID:l2domaintemplates.VLAN ${vlan} L2 domain template - scripted",
+	 "dhcpoptions" : [
+       {
+         "type"   : "03",      // 'routers' option for default gateway
+         "length" : "04",      // 4 bytes string, hex
+         "value"  : "0aff0${vlan}02" // 10.255.VLAN.2
+       }
+     ],
+     "vports" : [ 
+     { 
+		"name" : "Arista POD1 IXIA",
+		"type" : "BRIDGE",	// case sensitive "VM", "HOST", "BRIDGE"
+		"addressSpoofing" : "ENABLED", 
+		"active" : true,
+		"VLANID" : "ID:vlans.pod1-ixia",					// UUID of the VLAN object
+		"bridgeinterfaces" : [ { "name" : "ixia pod1" } ]
+	 },
+	 { 
+		"name" : "POD1 BMS with single link",
+		"type" : "BRIDGE",	// case sensitive "VM", "HOST", "BRIDGE"
+		"addressSpoofing" : "ENABLED", 
+		"active" : true,
+		"VLANID" : "ID:vlans.sn228-orphan",					// UUID of the VLAN object
+		"bridgeinterfaces" : [ { "name" : "orphan pod1" } ]
+	 },
+	 { 
+		"name" : "Arista POD2 IXIA",
+		"type" : "BRIDGE",	// case sensitive "VM", "HOST", "BRIDGE"
+		"addressSpoofing" : "ENABLED", 
+		"active" : true,
+		"VLANID" : "ID:vlans.pod2-ixia",					// UUID of the VLAN object
+		"bridgeinterfaces" : [ { "name" : "ixia pod2" } ]
+	 },
+	 { 
+		"name" : "POD2 BMS with single link",
+		"type" : "BRIDGE",	// case sensitive "VM", "HOST", "BRIDGE"
+		"addressSpoofing" : "ENABLED", 
+		"active" : true,
+		"VLANID" : "ID:vlans.sn226-orphan",					// UUID of the VLAN object
+		"bridgeinterfaces" : [ { "name" : "orphan pod2" } ]
+	 },
+	 { 
+		"name" : "POD2 BMS with mlag",
+		"type" : "BRIDGE",	// case sensitive "VM", "HOST", "BRIDGE"
+		"addressSpoofing" : "ENABLED", 
+		"active" : true,
+		"VLANID" : "ID:vlans.pod2-b12",					// UUID of the VLAN object
+		"bridgeinterfaces" : [ { "name" : "bms pod2" } ]
+	 },
+	 { 
+		"name" : "POD3 GW",
+		"type" : "BRIDGE",	// case sensitive "VM", "HOST", "BRIDGE"
+		"addressSpoofing" : "ENABLED", 
+		"active" : true,
+		"VLANID" : "ID:vlans.pod3-gw",					// UUID of the VLAN object
+		"bridgeinterfaces" : [ { "name" : "gw pod3" } ]
+	 }
+	] 
+   }
+  ]
+  
+}

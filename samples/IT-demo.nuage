@@ -1,0 +1,227 @@
+{  
+ "parameters" : {
+  
+ },
+
+  // User 'docker' is used to launch containers, needs to be member of 'admin' group!
+  "users" : [
+   { "userName" : "docker", "firstName" : "demo", "lastName" : "account", "email" : "docker@nuage.net",
+     "password" : "a9993e364706816aba3e25717850c26c9cd0d89d" }
+  ],
+
+ 
+ "gateways" : [
+   { "name" : "HP 5930",
+     "ports" : [
+	 { "name" : "HP5930:::Ten-GigabitEthernet1/0/6:3", "vlans" : [ 
+		{ "userMnemonic" : "to-weak-fe2", "value" : 200 }
+		] 
+	 },
+	 { "name" : "HP5930:::Ten-GigabitEthernet1/0/6:4", "vlans" : [ 
+		{ "userMnemonic" : "to-weak-fe1", "value" : 100 }
+		] 
+	 }
+	 ]
+  }
+ ],
+ 
+ "l2domaintemplates" : [
+  { 
+   "name"        : "Weak-FE1-Template - scripted",
+   "DHCPManaged" : true,
+   "address" : "10.1.0.0", 
+   "netmask" : "255.255.255.0", 
+   "gateway" : "10.1.0.1",	// gateway not passed in DHCP, set as DHCP server
+   "addressranges" : [ { "minAddress" : "10.1.0.100", "maxAddress" : "10.1.0.110" } ],
+   
+   "ingressacltemplates" : [
+    { "name" : "Weak FE Ingress policy - allow all",
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+      "active" : true,
+	  "ingressaclentrytemplates" : [		
+		{
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+		  "reflexive"    : false,
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",    // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+	 }
+   ],
+	
+  "egressacltemplates" : [
+    { "name" : "Weak FE Egress policy - allow all",
+      "active" : true,
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+	  "defaultInstallACLImplicitRules" : true,
+      "egressaclentrytemplates" : [
+        {
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",   // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          // "sourcePort"   : "1024-65535",
+          // "destinationPort" : "80",   // http
+          "action"       : "FORWARD"
+        }
+      ]
+    }
+   ]  
+ },{ 
+   "name"        : "Weak-FE3-Template - scripted",
+   "DHCPManaged" : true,
+   "address" : "10.3.0.0", 
+   "netmask" : "255.255.255.0", 
+   "gateway" : "10.3.0.1",	// gateway not passed in DHCP, set as DHCP server
+   "addressranges" : [ { "minAddress" : "10.3.0.100", "maxAddress" : "10.3.0.110" } ],
+   
+   "ingressacltemplates" : [
+    { "name" : "Weak FE Ingress policy - allow all",
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+      "active" : true,
+	  "ingressaclentrytemplates" : [		
+		{
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+		  "reflexive"    : false,
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",    // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+	 }
+   ],
+	
+  "egressacltemplates" : [
+    { "name" : "Weak FE Egress policy - allow all",
+      "active" : true,
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+	  "defaultInstallACLImplicitRules" : true,
+      "egressaclentrytemplates" : [
+        {
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",   // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          // "sourcePort"   : "1024-65535",
+          // "destinationPort" : "80",   // http
+          "action"       : "FORWARD"
+        }
+      ]
+    }
+   ]  
+ }],
+ 
+ "domaintemplates" : [
+ {
+  "name" : "Sprint IT L3 Domain Template",
+  "description" : "Single L3 domain with zones/subnets",
+  "zonetemplates" : [ 
+    { "name" : "Weak-FE2", "description" : "Weak FE-2 zone", "subnettemplates" : [ 
+		{ "name" : "weak-fe2-1", "address" : "10.2.0.0", "netmask" : "255.255.255.0", "gateway" : "10.2.0.254", 
+		  "addressranges" : [ { "minAddress" : "10.2.0.1", "maxAddress" : "10.2.0.200" }  ] 
+		}
+	  ] },  
+    { "name" : "Bulk Data Transport", "description" : "Where things like backup / NAS exist" },
+	  
+	{ "name" : "Strong-FE3", "description" : "Strong FE-3 zone", "subnettemplates" : [ 
+		{ "name" : "strong-fe3-1", "address" : "192.168.3.0", "netmask" : "255.255.255.0", "gateway" : "192.168.3.254", 
+		  "addressranges" : [ { "minAddress" : "192.168.3.1", "maxAddress" : "192.168.3.100" }  ] 
+		}
+	 ] },
+	 
+	{ "name" : "Strong-FE4", "description" : "Strong FE-4 zone", "subnettemplates" : [ 
+		{ "name" : "strong-fe4-1", "address" : "192.168.4.0", "netmask" : "255.255.255.0", "gateway" : "192.168.4.254", 
+		  "addressranges" : [ { "minAddress" : "192.168.4.1", "maxAddress" : "192.168.4.100" }  ] 
+		}
+	 ] },
+
+	{ "name" : "Strong-BE5", "description" : "Strong BE-5 zone", "subnettemplates" : [ 
+		{ "name" : "strong-be5-1", "address" : "192.168.5.0", "netmask" : "255.255.255.0", "gateway" : "192.168.5.254", 
+		  "addressranges" : [ { "minAddress" : "192.168.5.1", "maxAddress" : "192.168.5.100" }  ] 
+		}
+	 ] },
+	 
+	{ "name" : "SEN", "description" : "SEN zone", "subnettemplates" : [ 
+		{ "name" : "sen-1", "address" : "172.16.0.0", "netmask" : "255.255.255.0", "gateway" : "172.16.0.254", 
+		  "addressranges" : [ { "minAddress" : "172.16.0.1", "maxAddress" : "172.16.0.2" }  ] 
+		}
+	 ] }
+  ],
+
+  /**
+   * Future: Apply Policy groups to implement hardware ACLs
+   */
+  "policygrouptemplates" : [
+   { "name" : "Firewall ports", "description" : "Firewall output ports on 5930", "type" : "HARDWARE" } 
+  ],
+  
+  "ingressacltemplates" : [
+    { "name" : "L3 ingress policy",
+	  "description" : "Allow all",
+	  "defaultAllowIP" : true,
+      "defaultAllowNonIP" : true,
+      "active" : true,
+	  "ingressaclentrytemplates" : []
+	}
+   ],
+	
+  "egressacltemplates" : [
+    { "name" : "L3 Egress policy",
+	  "description" : "Allow all",
+      "active" : true,
+	  "defaultAllowIP" : true,
+      "defaultAllowNonIP" : true,
+      "egressaclentrytemplates" : []
+	}
+  ]
+  }
+ ],	// end domaintemplates
+
+ 
+ "l2domains" : [ { "name" : "Weak-FE1-scripted", "templateID" : "ID:l2domaintemplates.Weak-FE1-Template - scripted",
+     "vports" : [ 
+     { 
+		"name" : "5930-1-0-6-3 v200",
+		"type" : "BRIDGE",	// case sensitive "VM", "HOST", "BRIDGE"
+		"addressSpoofing" : "ENABLED", 
+		"active" : true,
+		"VLANID"			: "ID:vlans.200",					// UUID of the VLAN object
+		"bridgeinterfaces" : [ { "name" : "1-0-6-3 v200" } ]
+	 },
+	 { 
+		"name" : "5930-1-0-6-4 v100",
+		"type" : "BRIDGE",	// case sensitive "VM", "HOST", "BRIDGE"
+		"addressSpoofing" : "ENABLED", 
+		"active" : true,
+		"VLANID"			: "ID:vlans.100",					// UUID of the VLAN object
+		"bridgeinterfaces" : [ { "name" : "1-0-6-4 v100" } ]
+	 }
+	] 
+   }, { "name" : "Weak-FE3-scripted", "templateID" : "ID:l2domaintemplates.Weak-FE3-Template - scripted" }
+  ],
+  
+  "domains" : [
+  { "name" : "DC1 Sprint IT domain", 
+    "description" : "Application components located in DC1", 
+    "templateID" : "ID:domaintemplates.Sprint IT L3 Domain Template" }
+  ]
+}

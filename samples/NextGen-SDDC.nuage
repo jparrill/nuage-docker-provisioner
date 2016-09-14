@@ -1,0 +1,410 @@
+{
+ "parameters" : {
+  /**
+   This DC template design assumes that incoming traffic comes from a trusted physical firewall port on a VLAN, and is routed towards a VSG virtual gateway
+   
+   The gateway IP on the router would typically use VRRP for redundancy across 2 routers.
+   One could use a /29 + /30 subnet as follows:
+									in VSD:
+   VRRP: 			192.0.0.1/29	192.0.0.1/30
+   VSG virtual GW: 	192.0.0.2/29	192.0.0.2/30
+   router A: 		192.0.0.3/29
+   router B: 		192.0.0.4/29
+   
+   ( the physical router interface IPs do not need to be reachable )
+   
+   **/
+  
+  "VSG_ID" : "10.242.243.0",				// Name of the VSG, typically == system IP
+  
+  "FW_SUBNET"	: "135.121.110.0",
+  "FW_MASK"	 	: "255.255.255.240",
+  "FW_GW"		: "135.121.110.14",
+  
+  "FW_OUT_VLAN" : 100,				// VLAN on which traffic from firewall comes in
+  "GWIP" : "135.121.110.1",				// IP address of the gateway interface, can use DHCP
+  "GW_MAC" : "e4:11:5b:99:a9:0c",	// MAC address of gateway VLAN interface, c4h4
+  
+  "FW_OUT_VLAN2" : 200,				// VLAN on which traffic from firewall comes in
+  "GW2IP" : "135.121.110.2",				// IP address of the gateway interface, can use DHCP
+  "GW2_MAC" : "e4:11:5b:99:aa:20"	// MAC address of gateway VLAN interface, c4h5
+ },
+ 
+ "enterprisenetworks" : [
+   { "name" : "DNS servers", "address" : "10.10.20.0", "netmask" : "255.255.255.0" },  // Subnet where DNS servers reside
+   { "name" : "Management",  "address" : "10.10.30.0", "netmask" : "255.255.255.0" }   // Subnet with management terminals
+ ],
+
+ "groups" : [
+  { "name" : "Developers" }, { "name" : "Operations" }, { "name" : "Testers" }
+ ],
+
+ "domaintemplates" : [
+ {
+  "name" : "Perimeter Domain Template",
+  "description" : "Receives traffic from first layer of physical firewalls, and can perform Service Chaining to various appliances",
+  "zonetemplates" : [ 
+    { "name" : "Firewalls", 
+	  "description" : "Contains trusted output interfaces (VLANs) of physical firewalls" },  
+    { "name" : "Load Balancers", 
+	  "description" : "Contains physical + virtual load balancers, mainly for incoming web traffic" },
+    { "name" : "Internet Proxy Uplinks", 
+	  "description" : "Contains Internet proxies to allow VMs and appliances access to web sites" },
+	{ "name" : "Other functions",
+	  "description" : "Contains systems like IDS, WAF, GTM" }
+  ],
+
+  /**
+   * Apply Policy groups to implement hardware ACLs
+   */
+  "policygrouptemplates" : [
+   { "name" : "Firewall ports", "description" : "Firewall output ports on 7850 VSG", "type" : "HARDWARE" } 
+  ],
+  
+  "ingressacltemplates" : [
+    { "name" : "Perimeter ingress policy",
+	  "description" : "ACLs for the perimeter domain, reflexive where possible (SW)",
+	  "defaultAllowIP" : false,
+      "defaultAllowNonIP" : false,
+      "active" : true,
+	  "ingressaclentrytemplates" : [
+	    {
+		  "priority"     : 10,
+		  "description"  : "Allow the incoming https traffic from physical firewall ( not reflexive )",
+		  "reflexive"    : false,	// HW does not support
+		  "locationType" : "POLICYGROUP",   // HW source
+		  "locationID"   : "ID:policygrouptemplates.Firewall ports",
+          "networkType"  : "ZONE",    // destination
+		  "networkID"	 : "ID:zonetemplates.Load Balancers",
+          "etherType"    : "0x0800", 		// IPv4
+          "DSCP"         : "*",
+          "protocol"     : "6",      		// TCP
+          "sourcePort"   : "*",				// HW does not support range here
+          "destinationPort" : "443",		// Allowed HTTP ports
+          "action"       : "FORWARD"
+        },
+	    {
+		  "priority"     : 100,
+		  "description"  : "Allow the Internet proxies to go out via the firewall to port 80 (reflexive)",
+		  "reflexive"    : true,
+		  "locationType" : "ZONE",   // source
+		  "locationID"   : "ID:zonetemplates.Internet Proxy Uplinks",
+          "networkType"  : "POLICYGROUP",    // destination
+		  "networkID"	 : "ID:policygrouptemplates.Firewall ports",
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "6",      		// TCP
+          "sourcePort"   : "1024-65535",
+          "destinationPort" : "80",	// Allowed HTTP ports
+          "action"       : "FORWARD"
+        },
+		{
+		  "priority"     : 101,
+		  "description"  : "Allow the Internet proxies to go out via the firewall to port 443 (reflexive)",
+		  "reflexive"    : true,
+          "locationType" : "ZONE",   // source
+		  "locationID"   : "ID:zonetemplates.Internet Proxy Uplinks",
+          "networkType"  : "POLICYGROUP",    // destination
+		  "networkID"	 : "ID:policygrouptemplates.Firewall ports",
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "6",      		// TCP
+          "sourcePort"   : "1024-65535",
+          "destinationPort" : "443",	// Allowed HTTPS ports
+          "action"       : "FORWARD"
+        },
+		{
+		  "priority"     : 102,
+		  "description"  : "Allow the Internet proxies to perform DNS queries to the Internet (reflexive)",
+		  "reflexive"    : true,
+          "locationType" : "ZONE",   // source
+		  "locationID"   : "ID:zonetemplates.Internet Proxy Uplinks",
+          "networkType"  : "ANY",    // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "17",      		// UDP
+          "sourcePort"   : "1024-65535",
+          "destinationPort" : "53",	// Allowed DNS ports
+          "action"       : "FORWARD"
+        },
+		{
+		  "priority"     : 999,
+		  "description"  : "Drop anything else",
+		  "reflexive"    : false,
+          "networkType"  : "ANY",   // source
+          "locationType" : "ANY",   // destination
+          "etherType"    : "0x0800",
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "DROP"
+        }
+      ]
+	 }
+  ],
+	
+  "egressacltemplates" : [
+    { "name" : "Perimeter Egress policy",
+      "active" : true,
+	  "defaultAllowIP" : false,
+      "defaultAllowNonIP" : false,
+      "egressaclentrytemplates" : [
+        {
+		  "priority"     : 100,
+		  "reflexive"    : false,	// HW does not support reflexive
+		  "description"  : "Allow HTTPS traffic to Internet, from the load balancers out through the physical firewalls (not reflexive)",
+          "networkType"  : "ZONE",    // source
+		  "networkID"	 : "ID:zonetemplates.Load Balancers",
+          "locationType" : "POLICYGROUP",   // destination (HW)
+		  "locationID"   : "ID:policygrouptemplates.Firewall ports",
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "6",      // TCP
+          "sourcePort"   : "*",		 // HW does not support range
+          "destinationPort" : "443",  // https
+          "action"       : "FORWARD"
+        }
+      ]
+    }
+   ]  
+  },
+  {
+  "name" : "Business Domain Template",
+  "description" : "Receives traffic from the load balancers, contains web servers and other application components",
+  "zonetemplates" : [ 
+    { "name" : "Tier 2 Firewalls", 
+	  "description" : "Contains a second layer of physical/virtual firewall appliances" },  
+    { "name" : "Load Balancers Output", 
+	  "description" : "Contains load balancer output port" },
+    { "name" : "Internet Proxies In", 
+	  "description" : "Contains Internet proxies to allow VMs and appliances access to web sites" },
+	{ "name" : "Other functions",
+	  "description" : "Contains systems like IDS, WAF, GTM" },
+	
+	/**
+	 * Application specific zones, could split these out to a separate JSON template file
+	 */
+	{ "name" : "Web Zone",
+	  "description" : "Contains web servers" },
+	{ "name" : "Business logic Zone",
+	  "description" : "Contains application servers with core business logic" },  
+	{ "name" : "Database Zone",
+	  "description" : "Contains database servers" }	
+  ],
+
+  "ingressacltemplates" : [
+    { "name" : "Sample app ingress policy",
+	  "description" : "Application specific (reflexive) ACLs",
+	  "defaultAllowIP" : false,
+      "defaultAllowNonIP" : false,
+      "active" : true,
+	  "ingressaclentrytemplates" : [
+		{
+		  "priority"     : 10,
+		  "description"  : "Allow incoming web traffic from the load balancers (reflexive)",
+		  "reflexive"    : true,
+		  "locationType" : "ZONE",   // source
+		  "locationID"	 : "ID:zonetemplates.Load Balancers Output",
+		  "networkType"  : "ZONE",    // destination
+		  "networkID"	 : "ID:zonetemplates.Web Zone",
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "6",      		// TCP
+          "sourcePort"   : "1024-65535",
+          "destinationPort" : "80",		// Load balancers convert https to plain http
+          "action"       : "FORWARD"
+        },
+		{
+		  "priority"     : 20,
+		  "description"  : "Allow web to business logic (reflexive)",
+		  "reflexive"    : true,
+		  "locationType" : "ZONE",   // source
+		  "locationID"	 : "ID:zonetemplates.Web Zone",
+		  "networkType"  : "ZONE",    // destination
+		  "networkID"	 : "ID:zonetemplates.Business logic Zone",
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "6",      		// TCP
+          "sourcePort"   : "1024-65535",
+          "destinationPort" : "8080",		// Tomcat app servers running on port 8080
+          "action"       : "FORWARD"
+        },
+		{
+		  "priority"     : 30,
+		  "description"  : "Allow business logic to database (reflexive), these flows get Service Chained through the 2nd tier of Firewalls",
+		  "reflexive"    : true,
+		  "locationType" : "ZONE",   // source
+		  "locationID"	 : "ID:zonetemplates.Business logic Zone",
+          "networkType"  : "ZONE",    // destination
+		  "networkID"	 : "ID:zonetemplates.Database Zone",
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "6",      		// TCP
+          "sourcePort"   : "1024-65535",
+          "destinationPort" : "3306",		// MySQL port
+          "action"       : "FORWARD"
+        },
+	    {
+		  "priority"     : 100,
+		  "description"  : "Allow TCP to the Internet proxies on port 8000 (reflexive)",
+		  "reflexive"    : true,
+          "networkType"  : "ZONE",    // destination
+		  "networkID"	 : "ID:zonetemplates.Internet Proxies In",
+		  "locationType" : "ANY",   // source
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "6",      		// TCP
+          "sourcePort"   : "1024-65535",
+          "destinationPort" : "8000",		// Internet proxy port
+          "action"       : "FORWARD"
+        },
+		{
+		  "priority"     : 999,
+		  "description"  : "Drop anything else (except ingress rules created through reflexive egress ACLs)",
+		  "reflexive"    : false,
+          "networkType"  : "ANY",   // source
+          "locationType" : "ANY",   // destination
+          "etherType"    : "0x0800",
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "DROP"
+        }
+      ]
+	 }
+  ],
+	
+  "egressacltemplates" : [
+    { "name" : "Application specific Egress policy",
+      "active" : true,
+	  "defaultAllowIP" : false,
+      "defaultAllowNonIP" : false,
+      "egressaclentrytemplates" : [
+        {
+		  "priority"     : 999,
+		  "description"  : "Drop anything not created by reflexive ingress ACLs",
+		  "reflexive"    : false,
+          "networkType"  : "ANY",   // source
+          "locationType" : "ANY",   // destination
+          "etherType"    : "0x0800",
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "DROP"
+        }
+      ]
+    }
+   ],
+   
+   "redirectiontargettemplates" : [
+     { "name" : "2nd Tier Firewall", "description" : "redundant redirection target for 2nd layer of virtual firewalls", "endPointType" : "L3", "redundancyEnabled" : true }
+   ],
+   
+   "ingressadvfwdtemplates" : [
+   { "name" : "Service chain database connections through 2nd tier of specialized MySQL firewalls",
+     "active" : true,
+	 "ingressadvfwdentrytemplates" : [
+	  {
+	    "priority" 		: 100,
+		"description"	: "Redirect MySQL connections via fw",
+		"networkType"	: "ZONE",    // source
+		"networkID"		: "ID:zonetemplates.Business logic Zone",
+		"locationType"	: "ZONE",   // destination
+		"locationID"	: "ID:zonetemplates.Database Zone",
+		"etherType"    : "0x0800",
+        "DSCP"         : "*",
+        "protocol"     : "6",	// TCP
+		"sourcePort"   : "*",
+        "destinationPort" : "3306",		// MySQL port
+		"action"		: "REDIRECT",
+		"redirectVPortTagID" : "ID:redirectiontargettemplates.2nd Tier Firewall"
+	  }
+	 ]
+	}
+   ]
+  }
+ ], // domaintemplates
+ 
+ "gateways" : [
+   { "name" : "${VSG_ID}", 		// VSG System IP == ID
+     "ports" : [
+	 { "name" : "lag-1", "vlans" : [ 
+		{
+			 "userMnemonic" : "dc1-fw-a-out",
+			 "value" : "${FW_OUT_VLAN}"
+		},{
+			 "userMnemonic" : "dc1-fw-b-out",
+			 "value" : "${FW_OUT_VLAN2}"		
+		}
+		] 
+	 }
+	 ]
+  }
+ ],
+ 
+ "domains" : [
+ { "name" : "DC1 Perimeter", 
+   "description" : "Application components located in DC1", 
+   "templateID" : "ID:domaintemplates.Perimeter Domain Template",
+   
+   "staticroutes" : [
+		{ "address" : "10.2.0.0", "netmask" : "255.255.255.0", "nextHopIp" : "172.16.0.2" /* Load balancer vport */ },
+		// Return traffic via the firewall
+		{ "address" : "0.0.0.0", "netmask" : "0.0.0.0", "nextHopIp" : "${GWIP}" /* GW host vport */ }
+   ],
+   
+   // Reference the template policy groups by name, this performs a GET to get the UUID
+   "policygroups" : [ 
+	  { "name" : "Firewall ports" } 
+   ],
+   
+   "zones" : [ {
+		"name" : "Firewalls",	// must match template
+		"subnets" : [ {
+		  "name" : "fw1",
+		  "address" : "${FW_SUBNET}", "netmask" : "${FW_MASK}", "gateway" : "${FW_GW}",
+	      "vports" : [
+			 { 
+				"active" : true,
+				"name" : "DC1-fw-A",
+				"description" : "Output port of physical firewall on VLAN ${FW_OUT_VLAN}",
+				
+				 "type" : "HOST",
+				 "addressSpoofing" 	: "INHERITED",
+				 "hostinterfaces" 	: [ { "name" : "Firewall A port", "IPAddress" : "${GWIP}", "MAC" : "${GW_MAC}" } ],
+				 "VLANID" 			: "ID:vlans.${FW_OUT_VLAN}",		// UUID of the VLAN object
+				 "policygroups" 	: [ "ID:policygroups.Firewall ports" ]
+			 },
+			 { 
+				"active" : true,
+				"name" : "DC1-fw-B",
+				"description" : "Output port of physical firewall on VLAN ${FW_OUT_VLAN2}",
+				
+				 "type" : "HOST",
+				 "addressSpoofing" 	: "INHERITED",
+				 "hostinterfaces" 	: [ { "name" : "Firewall B port", "IPAddress" : "${GW2IP}", "MAC" : "${GW2_MAC}" } ],
+				 "VLANID" 			: "ID:vlans.${FW_OUT_VLAN2}",		// UUID of the VLAN object
+				 "policygroups" 	: [ "ID:policygroups.Firewall ports" ]
+			 }
+			] // vports 
+		  }
+		]	// subnets
+	  },{
+		"name" : "Load Balancers",
+		"subnets" : [ {
+		  "name" : "lb1",
+		  "description" : "non-routable internal subnet for load balancers",
+		  "address" : "172.16.0.0", "netmask" : "255.255.255.0", "gateway" : "172.16.0.1"
+		}]
+	  }] // zones
+ },
+ 
+ { "name" : "DC1 Business Domain",
+   "description" : "Domain instance for business components deployed in DC1",
+   "templateID" : "ID:domaintemplates.Business Domain Template"
+ },
+ 
+ { "name" : "DC2 Perimeter", 
+   "description" : "Application components located in DC2 (TODO)",
+   "templateID" : "ID:domaintemplates.Perimeter Domain Template" 
+ }
+ ]
+ 
+}

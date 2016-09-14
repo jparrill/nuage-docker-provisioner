@@ -1,0 +1,78 @@
+{
+ "parameters" : {
+	"version" : 1
+ },
+
+  "domaintemplates" : [
+ {
+  "name" : "VPN Service Chaining",
+  "zonetemplates" : [ 
+    { "name" : "VNF-In", "subnettemplates" : [ { "name" : "vnf-in", "address" : "172.28.0.0", "netmask" : "255.255.255.0", "gateway" : "172.28.0.1",
+  	  "addressranges" : [ { "minAddress" : "172.28.0.2", "maxAddress" : "172.28.0.2" } ] } ] },
+	{ "name" : "VNF-Out", "subnettemplates" : [ { "name" : "vnf-out", "address" : "172.28.1.0", "netmask" : "255.255.255.0", "gateway" : "172.28.1.1",
+  	  "addressranges" : [ { "minAddress" : "172.28.1.2", "maxAddress" : "172.28.1.2" } ] } ] }
+  ],
+
+  "ingressacltemplates" : [
+    { "name" : "Service Chain Ingress policy",
+	  "description" : "Allow all",
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+      "active" : true,
+	  "ingressaclentrytemplates" : [		
+		{
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+		  "reflexive"    : false,
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",    // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+	 }
+   ],
+	
+  "egressacltemplates" : [
+    { "name" : "Service Chain Egress policy",
+	  "description" : "Allow all",
+      "active" : true,
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+	  "defaultInstallACLImplicitRules" : true,
+      "egressaclentrytemplates" : [
+        {
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",   // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+    }
+   ] 
+  } 
+ ],
+  
+ "domains" : [
+   { "name" : "VPN Service Chain for customer 1",  "templateID" : "ID:domaintemplates.VPN Service Chaining",
+     "tunnelType" : "GRE",
+	
+     // These parameters are specific to the customer
+     "routeTarget" 			: "1:1",
+	 "routeDistinguisher" 	: "12345:1",
+   
+     "staticroutes" : [
+	 // Inject a default route into the customer VPN, using a RD that matches theirs
+	 // Cannot pick a RD ourselves :(
+	 { "address" : "0.0.0.0", "netmask" : "0.0.0.0", "nextHopIp" : "172.28.0.2" /* vFW vport */  /* , "routeDistinguisher" : "12345:1" */ }
+	 ]
+   }
+ ]
+ 
+}

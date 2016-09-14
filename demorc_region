@@ -1,0 +1,6 @@
+OS_USERNAME=admin
+OS_TENANT_NAME=admin
+OS_PASSWORD=openstack
+OS_AUTH_URL=http://keystone.demo.corp:35357/v2.0/
+VSP_NUAGE_USER=csproot
+VSP_NUAGE_PASS=csproot

@@ -1,0 +1,83 @@
+{
+ "parameters" : {
+   "dc-pe-name" : "dc1-pe"	// Name of your 7750 gateway, organization needs permissions at the gw level
+ },
+ 
+ "domaintemplates" : [
+ {
+  "name" : "WAN Redirection template",
+  
+  "ingressacltemplates" : [
+    { "name" : "Ingress policy",
+	  "description" : "Allow all",
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+      "active" : true,
+	  "ingressaclentrytemplates" : [		
+		{
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+		  "reflexive"    : false,
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",    // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+	 }
+   ],
+	
+  "egressacltemplates" : [
+    { "name" : "Egress policy",
+	  "description" : "Allow all",
+      "active" : true,
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+	  "defaultInstallACLImplicitRules" : true,
+      "egressaclentrytemplates" : [
+        {
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",   // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+    }
+   ]
+ 
+  }
+ ],
+ 
+ "domains" : [
+   { "name" : "WAN Redirection Domain",  "templateID" : "ID:domaintemplates.WAN Redirection template",
+   
+   /*
+    * Each redirection target is assigned an ESI by VSD
+    */
+   "redirectiontargets" : [
+     { "name" : "Red", "description" : "red target", "endPointType" : "L3" },
+	 { "name" : "Green", "description" : "green target", "endPointType" : "L3" },
+	 { "name" : "Blue", "description" : "blue target", "endPointType" : "L3" }
+   ]
+
+   }
+ ],
+ 
+ "gateways" : [ 
+  { "name" : "${dc-pe-name}", "services" : [ 
+    { "name" : "Service Chain", "WANServiceIdentifier" : "svc-chain", "serviceType" : "L2", "configType" : "DYNAMIC", "IRBEnabled" : true, "servicePolicy" : "l2-irb", "description" : "Redirects traffic to Red VNFs",
+	  "metadatas" : [
+	    { "name" : "params", "blob" : "RED_ESI=${ESI:redirectiontargets.Red},GREEN_ESI=${ESI:redirectiontargets.Green},BLUE_ESI=${ESI:redirectiontargets.Blue}" }
+	  ]
+	}
+    ] 
+  }
+ ]
+ 
+}

@@ -1,0 +1,76 @@
+{
+ "parameters" : {
+ },
+
+ // Reference NSG template names
+ "nsgatewaytemplates" : [
+  { "name" : "NSG-V Single Uplink" }
+ ],
+ 
+ "nsgateways" : [
+  { "name" : "NSG-V A", "templateID" : "ID:nsgatewaytemplates.NSG-V Single Uplink", "description" : "135.121.110.1",
+    "nsports" : [
+	 { "name" : "LAN", "vlans" : [ { "value" : 0 } ] }
+	]
+  }
+ ],
+ 
+ 
+ "domains" : [
+   
+   // VPN overlay with a single NSG-V and a VM-b to ping
+   { "name" : "VPN Overlay",
+     // Need to instantiate the zone template to connect vports
+     "zones" : [ 
+      {
+        "name" : "DC Site A",
+        "subnets" : [
+		
+		 // Make sure the GW MAC in subnet "overlay-a" does not conflict with the VRS GW MAC in the LAN subnet
+		 { "name" : "overlay-a", 
+		   
+		   "vports" : [ 
+			 { 
+				"name" : "NSG-A LAN1 untagged",
+				"type" : "BRIDGE",
+				"addressSpoofing" : "ENABLED", 
+				"active" : true,
+				"VLANID" : "ID:vlans.0",					// UUID of the VLAN object
+				"bridgeinterfaces" : [ { "name" : "nsg-a lan1" } ]
+			 }
+		   ]
+		 }
+		 		 
+        ]
+      }
+     ]
+	 
+   },
+   {
+    "name" : "L3 LAN", 
+	"zones" : [
+	 { "name" : "L3 LAN A", 
+	   "subnets" : [
+	    { "name" : "a",
+	     "dhcpoptions" : [
+            // Set a DHCP option to configure the routes to the remote VMs via the NSG-V
+			{
+			 "type"   : "79", // classless static route, see RFC3442 ( 121 == 79 in hex ). Replaces 'routers' option
+			 "length" : "0c", // 12 bytes hex
+			 "value"  : "000a00000110ac100a000001"  // 0.0.0.0/0 via 10.0.0.1, 172.16.0.0/16 via 10.0.0.1 ( workaround CirrOS bug )
+			}
+         ]
+	    }
+	   ]
+	 }
+	]
+   }
+ ],
+ 
+ "vms" : [
+  { "name" : "nsg-a", "image" : "NSG-V latest version", "flavor" : "NSG-V", "vnics" : [ "NSG-V WAN Uplink 1 Domain#wan1#135.121.110.1", "L3 LAN#a#10.0.0.3" ] },
+  { "name" : "vm-a", "image" : "GRML", "flavor" : "Cloudimage", "vnics" : [ "L3 LAN#a#10.0.0.2" ] },
+  { "name" : "vm-o", "image" : "GRML", "flavor" : "Cloudimage", "vnics" : [ "VPN Overlay#vms#172.16.1.2" ] }
+ ]
+ 
+}

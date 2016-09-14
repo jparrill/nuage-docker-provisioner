@@ -1,0 +1,186 @@
+/*
+ * Sample csp configuration for NSG profiles
+ *
+ * Openstack:
+ * + Flavor: nova flavor-create NSG-V auto 4096 4 
+ * + Import: 
+     glance image-create --name="NSG-V v3.2R4" --disk-format=qcow2 \
+     --container-format=bare --is-public=true --min-disk 4 --property hw_disk_bus=ide \
+     --property hw_rng_model=virtio --property hypervisor_type="kvm"  < ncpe_centos7.qcow2
+ * + Update: 
+     glance image-update ncpe_centos7.qcow2 --property hw_disk_bus=ide
+   + Enable additional features:
+     nova flavor-key NSG-V set hw:watchdog_action=reset
+     nova flavor-key NSG-V set hw_rng:allowed=True
+ */
+
+{
+ "parameters" : {
+  "VSC1" : "135.121.110.102",
+  "VSC2" : "135.121.110.119"
+ },
+
+ "images" : [
+  { "name" : "NSG-V latest version", "url" : "http://135.121.108.6/nuage_install/3.2.R7/unpack/ncpe_centos7.qcow2", 
+    "args" : "--min-disk 4 --property hw_disk_bus=ide --property hw_rng_model=virtio --property hypervisor_type=kvm" },
+
+  // A tiny 16MB image
+  { "name" : "CirrOS", "url" : "http://135.121.108.6/nuage_install/demo-vms/cirros-d150923-x86_64-disk.img",
+    "args" : "--min-disk 1 --property hypervisor_type=kvm"
+  },
+
+  // GRML is much larger (229MB), but also supports VLANs. Image works on ESXi too, but VLANs not supported there
+  { "name" : "GRML", "url" : "http://135.121.108.6/nuage_install/demo-vms/grml64-small_2014.11.iso",
+    "args" : "--min-disk 1 --property hypervisor_type=kvm"
+  }
+  
+  ,{ "name" : "Ubuntu Trusty Cloudimage", "url" : "http://135.121.108.6/nuage_install/demo-vms/trusty-server-cloudimg-amd64-disk1.img", 
+     "args" : "--min-disk 3 --property hypervisor_type=kvm" }
+ ],
+ 
+ "flavors" : [
+  { "name" : "NSG-V", "memory" : 2048, "disk" : 4, "vcpus" : 1 },
+  { "name" : "Cloudimage", "memory" : 512, "disk" : 2, "vcpus" : 1 }
+ ],
+  
+ "infrastructurevscprofiles" : [
+  {
+   "name" : "VSC1", 
+   "firstController" : "${VSC1}"
+  },
+  {
+   "name" : "VSC2", 
+   "firstController" : "${VSC2}"
+  },
+  {
+   "name" : "VSC1+2", 
+   "firstController"  : "${VSC1}",
+   "secondController" : "${VSC2}"
+  }
+ ],
+ 
+ "infrastructureportprofiles" : [
+ { "name"      : "Primary WAN port",   "mtu" : 1600, "uplinkTag" : "PRIMARY"   },
+ { "name"      : "Secondary WAN port", "mtu" : 1600, "uplinkTag" : "SECONDARY" },
+ { "name"      : "LAN port profile", "description" : "Needed for Redundancy" },
+ 
+ { "name"      : "Primary Internet WAN port",   "mtu" : 1500, "uplinkTag" : "PRIMARY"   },
+ { "name"      : "Secondary Internet WAN port", "mtu" : 1500, "uplinkTag" : "SECONDARY" }
+ ],
+ 
+ "infrastructuregatewayprofiles" : [
+  {
+   "name" : "VNS lab profile",
+   "proxyDNSName" : "vns-proxy.nuage.local",
+   "deadTimer" : "ONE_HOUR",	// Time a gateway is allowed to be inactive before its certificate gets revoked
+   "useTwoFactor" : false		// Use WAN activation with zero-touch
+  }
+ ],
+ 
+ "nsgatewaytemplates" : [
+  {
+   "name" : "NSG-V Single Uplink",
+   "description" : "NSG with single uplink, connected to a pair of VSCs",
+   "infrastructureProfileID" : "ID:infrastructuregatewayprofiles.VNS lab profile",
+ 
+   "nsporttemplates" : [
+    { "name" : "WAN", "userMnemonic" : "single-WAN", "physicalName" : "port1", "portType" : "NETWORK", 
+	  "infrastructureProfileID" : "ID:infrastructureportprofiles.Primary WAN port",
+	  "associatedVSCProfileID" : "ID:infrastructurevscprofiles.VSC1+2" },
+    { "name" : "LAN", "userMnemonic" : "LAN",   "physicalName" : "port2", "portType" : "ACCESS", 
+	  "infrastructureProfileID" : "ID:infrastructureportprofiles.LAN port profile", "VLANRange" : "0",
+      "vlantemplates" : [
+	   { "value" : 0, "description" : "untagged" }
+	  ]
+	}
+   ]
+  },
+  {
+   "name" : "NSG-V Single Uplink with 2 LAN ports",
+   "description" : "DC NSG with 2 untagged LAN ports",
+   "infrastructureProfileID" : "ID:infrastructuregatewayprofiles.VNS lab profile",
+ 
+   "nsporttemplates" : [
+    { "name" : "WAN", "userMnemonic" : "single-WAN", "physicalName" : "port1", "portType" : "NETWORK", 
+	  "infrastructureProfileID" : "ID:infrastructureportprofiles.Primary WAN port",
+	  "associatedVSCProfileID" : "ID:infrastructurevscprofiles.VSC1+2" },
+    { "name" : "LAN-uplink", "userMnemonic" : "LAN-uplink", "physicalName" : "port2", "portType" : "ACCESS", 
+	  "infrastructureProfileID" : "ID:infrastructureportprofiles.LAN port profile", "VLANRange" : "0",
+      "vlantemplates" : [
+	   { "value" : 0, "description" : "untagged" }
+	  ]
+	},
+	{ "name" : "LAN-vnfs", "userMnemonic" : "LAN-vnfs", "physicalName" : "port3", "portType" : "ACCESS", 
+	  "infrastructureProfileID" : "ID:infrastructureportprofiles.LAN port profile", "VLANRange" : "0",
+      "vlantemplates" : [
+	   { "value" : 0, "description" : "untagged" }
+	  ]
+	}
+   ]
+  },
+  {
+   "name" : "NSG-V Single Uplink for Redundant Access",
+   "description" : "NSG with single uplink and 1 LAN ports, tagged or untagged",
+   "infrastructureProfileID" : "ID:infrastructuregatewayprofiles.VNS lab profile",
+ 
+   "nsporttemplates" : [
+    { "name" : "WAN", "userMnemonic" : "single-WAN", "physicalName" : "port1", "portType" : "NETWORK", 
+	  "infrastructureProfileID" : "ID:infrastructureportprofiles.Primary WAN port",
+	  "associatedVSCProfileID" : "ID:infrastructurevscprofiles.VSC1+2" },
+    { "name" : "LAN", "userMnemonic" : "LAN-tagged", "physicalName" : "port2", "portType" : "ACCESS", 
+	  "infrastructureProfileID" : "ID:infrastructureportprofiles.LAN port profile", "VLANRange" : "0-4094"
+      
+	  /*
+	   
+	  Don't define any VLAN template, so port can be used as both tagged and untagged
+	  
+	  "vlantemplates" : [
+	   { "value" : 123, "description" : "User Traffic" }
+	  ]
+	  */
+	}
+   ]
+  },
+  {
+   "name" : "NSG-V Dual Uplink",
+   "description" : "NSG with dual uplink, each with its own VSC",
+   "infrastructureProfileID" : "ID:infrastructuregatewayprofiles.VNS lab profile",
+ 
+   "nsporttemplates" : [
+    { "name" : "WAN1", "userMnemonic" : "WAN1", "physicalName" : "port1", "portType" : "NETWORK", 
+	  "infrastructureProfileID" : "ID:infrastructureportprofiles.Primary WAN port",
+	  "associatedVSCProfileID" : "ID:infrastructurevscprofiles.VSC1" },
+	{ "name" : "WAN2", "userMnemonic" : "WAN2", "physicalName" : "port2", "portType" : "NETWORK",
+      "infrastructureProfileID" : "ID:infrastructureportprofiles.Secondary WAN port",	
+	  "associatedVSCProfileID" : "ID:infrastructurevscprofiles.VSC2" },
+    { "name" : "LAN", "userMnemonic" : "LAN",   "physicalName" : "port3", "portType" : "ACCESS", "VLANRange" : "0",
+      "vlantemplates" : [
+	   { "value" : 0, "description" : "untagged" }
+	  ]
+	}
+   ]
+  },
+  {
+   "name" : "6-port NSG-P Dual Uplink",
+   "description" : "Physical NSG with dual uplink, each with its own VSC; untagged LAN port 3, 4-6 as needed",
+   "infrastructureProfileID" : "ID:infrastructuregatewayprofiles.VNS lab profile",
+ 
+   "nsporttemplates" : [
+    { "name" : "WAN1", "userMnemonic" : "WAN1", "physicalName" : "port1", "portType" : "NETWORK", 
+	  "infrastructureProfileID" : "ID:infrastructureportprofiles.Primary WAN port",
+	  "associatedVSCProfileID" : "ID:infrastructurevscprofiles.VSC1" },
+	{ "name" : "WAN2", "userMnemonic" : "WAN2", "physicalName" : "port2", "portType" : "NETWORK",
+      "infrastructureProfileID" : "ID:infrastructureportprofiles.Secondary WAN port",	
+	  "associatedVSCProfileID" : "ID:infrastructurevscprofiles.VSC2" },
+    { "name" : "LAN1", "userMnemonic" : "LAN1", "physicalName" : "port3", "portType" : "ACCESS", "VLANRange" : "0",
+      "vlantemplates" : [
+	   { "value" : 0, "description" : "untagged" }
+	  ]
+	},
+	{ "name" : "LAN2", "userMnemonic" : "LAN2",   "physicalName" : "port4", "portType" : "ACCESS", "VLANRange" : "0-4094" },
+	{ "name" : "LAN3", "userMnemonic" : "LAN3",   "physicalName" : "port5", "portType" : "ACCESS", "VLANRange" : "0-4094" },
+	{ "name" : "LAN4", "userMnemonic" : "LAN4",   "physicalName" : "port6", "portType" : "ACCESS", "VLANRange" : "0-4094" }
+   ]
+  }
+ ]
+}

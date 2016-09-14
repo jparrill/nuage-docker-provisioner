@@ -1,0 +1,342 @@
+{
+ "parameters" : {
+ },
+
+ "dscpforwardingclasstables" : [
+  { "name" : "Green VNF table",
+    "dscpforwardingclassmappings" : [
+	 { "DSCP" : 56, "forwardingClass" : "D" }	// Map A ( coming in via Red ) to D ( Red + Green = Brown )
+	] 
+  },
+  { "name" : "Blue VNF table",
+    "dscpforwardingclassmappings" : [
+	 { "DSCP" : 56, "forwardingClass" : "E" },	// Map A ( coming in via Red ) to E ( Red + Blue = Purple )
+	 { "DSCP" : 48, "forwardingClass" : "F" },	// Map B ( coming in via Green ) to F ( Green + Blue = xxx )
+	 { "DSCP" : 34, "forwardingClass" : "G" }	// Map D ( coming in via Red+Green ) to G ( all colors )
+	] 
+  }
+ ],
+ 
+ "domaintemplates" : [
+ {
+  "name" : "Service Chainbow template",
+
+  "redirectiontargettemplates" : [
+     { "name" : "Red", "description" : "red target", "endPointType" : "L3" },
+	 { "name" : "Green", "description" : "green target", "endPointType" : "L3" },
+	 { "name" : "Blue", "description" : "blue target", "endPointType" : "L3" }
+  ],
+  
+  "policygrouptemplates" : [
+   { "name" : "Red", "description" : "red ports", "type" : "SOFTWARE" },
+   { "name" : "Green", "description" : "green ports", "type" : "SOFTWARE" },
+   { "name" : "Blue", "description" : "blue ports", "type" : "SOFTWARE" }
+  ],
+  
+  "zonetemplates" : [ 
+   { "name" : "User VMs",
+     "subnettemplates" : [
+	   { "name" : "users", "address" : "10.0.0.0", "netmask" : "255.255.255.0", "gateway" : "10.0.0.254", 
+		 "addressranges" : [ { "minAddress" : "10.0.0.2", "maxAddress" : "10.0.0.10", "DHCPPoolType" : "HOST" } ]
+	   }
+	 ]
+   },
+   { "name" : "Color VNFs",
+     "subnettemplates" : [
+	   { "name" : "colors", "address" : "192.168.0.0", "netmask" : "255.255.255.0", "gateway" : "192.168.0.254", 
+		 "addressranges" : [ { "minAddress" : "192.168.0.2", "maxAddress" : "192.168.0.10", "DHCPPoolType" : "HOST" } ]
+	   }
+	  ]
+   },
+   { "name" : "Targets",
+     "subnettemplates" : [
+	   { "name" : "rainbow", "address" : "172.16.0.0", "netmask" : "255.255.255.0", "gateway" : "172.16.0.254", 
+		 "addressranges" : [ { "minAddress" : "172.16.0.2", "maxAddress" : "172.16.0.10", "DHCPPoolType" : "HOST" } ]
+	   }
+	  ]
+   }
+  ],
+  
+  "ingressacltemplates" : [
+    { "name" : "Ingress policy",
+	  "description" : "Allow all",
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+      "active" : true,
+	  "ingressaclentrytemplates" : [		
+		{
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+		  "reflexive"    : false,
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",    // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+	 }
+   ],
+	
+  "egressacltemplates" : [
+    { "name" : "Egress policy",
+	  "description" : "Allow all",
+      "active" : true,
+      "defaultAllowNonIP" : true,
+	  "defaultAllowIP" : true,
+	  "defaultInstallACLImplicitRules" : true,
+      "egressaclentrytemplates" : [
+        {
+		  "priority"     : 100,
+		  "description"  : "Allow all IP",
+          "networkType"  : "ANY",    // source
+          "locationType" : "ANY",   // destination
+          "etherType"    : "0x0800", // IPv4
+          "DSCP"         : "*",
+          "protocol"     : "ANY",
+          "action"       : "FORWARD"
+        }
+      ]
+    }
+   ],
+   
+   "ingressadvfwdtemplates" : [
+   { "name" : "Redirect based on TCP destination port",
+     "active" : true,
+         "ingressadvfwdentrytemplates" : [
+          {
+            "priority"      : 100,
+            "description"   : "TCP port 1 to QoS class H (best effort)",
+			"destinationPort" : "1",
+            "FCOverride" : "H",
+			
+            "locationType"   : "ZONE",    // source
+            "locationID"     : "ID:zonetemplates.User VMs",
+            "networkType"  : "ANY",   // destination
+            "etherType"    : "0x0800",
+			"DSCP"         : "*",
+			"protocol"     : "6",   // TCP
+            "sourcePort"   : "*",
+			"action"       : "FORWARD",
+			"statsLoggingEnabled" : true			
+          },
+		  {
+            "priority"      : 200,
+            "description"   : "Redirect TCP port 2 to RED",
+			"destinationPort" : "2",
+            "redirectVPortTagID" : "ID:redirectiontargettemplates.Red",
+			
+            "locationType"   : "ZONE",    // source
+            "locationID"     : "ID:zonetemplates.User VMs",
+            "networkType"  : "ANY",   // destination
+            "etherType"    : "0x0800",
+			"DSCP"         : "*",
+			"protocol"     : "6",   // TCP
+            "sourcePort"   : "*",
+			"action"       : "REDIRECT",
+			"statsLoggingEnabled" : true			
+          },
+		  {
+            "priority"      : 300,
+            "description"   : "Redirect TCP port 3 to RED + GREEN",
+			"destinationPort" : "3",
+            "redirectVPortTagID" : "ID:redirectiontargettemplates.Red",
+			
+            "locationType"   : "ZONE",    // source
+            "locationID"     : "ID:zonetemplates.User VMs",
+            "networkType"  : "ANY",   // destination
+            "etherType"    : "0x0800",
+			"DSCP"         : "*",
+			"protocol"     : "6",   // TCP
+            "sourcePort"   : "*",
+			"action"       : "REDIRECT",
+			"statsLoggingEnabled" : true			
+          },
+		  {
+            "priority"      : 310,
+            "description"   : "Redirect TCP port 3 to RED + GREEN",
+			"destinationPort" : "3",
+            "redirectVPortTagID" : "ID:redirectiontargettemplates.Green",
+			
+            "locationType"   : "POLICYGROUP",    // source
+            "locationID"     : "ID:policygrouptemplates.Red",
+            "networkType"  : "ANY",   // destination
+            "etherType"    : "0x0800",
+			"DSCP"         : "*",
+			"protocol"     : "6",   // TCP
+            "sourcePort"   : "*",
+			"action"       : "REDIRECT",
+			"statsLoggingEnabled" : true			
+          },
+		  {
+            "priority"      : 400,
+            "description"   : "Redirect TCP port 4 to GREEN",
+			"destinationPort" : "4",
+            "redirectVPortTagID" : "ID:redirectiontargettemplates.Green",
+			
+            "locationType"   : "ZONE",    // source
+            "locationID"     : "ID:zonetemplates.User VMs",
+            "networkType"  : "ANY",   // destination
+            "etherType"    : "0x0800",
+			"DSCP"         : "*",
+			"protocol"     : "6",   // TCP
+            "sourcePort"   : "*",
+			"action"       : "REDIRECT",
+			"statsLoggingEnabled" : true			
+          },
+		  {
+            "priority"      : 500,
+            "description"   : "Redirect TCP port 5 to GREEN + BLUE",
+			"destinationPort" : "5",
+            "redirectVPortTagID" : "ID:redirectiontargettemplates.Green",
+			
+            "locationType"   : "ZONE",    // source
+            "locationID"     : "ID:zonetemplates.User VMs",
+            "networkType"  : "ANY",   // destination
+            "etherType"    : "0x0800",
+			"DSCP"         : "*",
+			"protocol"     : "6",   // TCP
+            "sourcePort"   : "*",
+			"action"       : "REDIRECT",
+			"statsLoggingEnabled" : true			
+          },
+		  {
+            "priority"      : 510,
+            "description"   : "Redirect TCP port 5 to GREEN + BLUE",
+			"destinationPort" : "5",
+            "redirectVPortTagID" : "ID:redirectiontargettemplates.Blue",
+			
+            "locationType"   : "POLICYGROUP",    // source
+            "locationID"     : "ID:policygrouptemplates.Green",
+            "networkType"  : "ANY",   // destination
+            "etherType"    : "0x0800",
+			"DSCP"         : "*",
+			"protocol"     : "6",   // TCP
+            "sourcePort"   : "*",
+			"action"       : "REDIRECT",
+			"statsLoggingEnabled" : true			
+          },
+		  {
+            "priority"      : 600,
+            "description"   : "Redirect TCP port 6 to BLUE",
+			"destinationPort" : "6",
+            "redirectVPortTagID" : "ID:redirectiontargettemplates.Blue",
+			
+            "locationType"   : "ZONE",    // source
+            "locationID"     : "ID:zonetemplates.User VMs",
+            "networkType"  : "ANY",   // destination
+            "etherType"    : "0x0800",
+			"DSCP"         : "*",
+			"protocol"     : "6",   // TCP
+            "sourcePort"   : "*",
+			"action"       : "REDIRECT",
+			"statsLoggingEnabled" : true			
+          },
+		  
+		  {
+            "priority"      : 700,
+            "description"   : "Redirect TCP port 7 to RED + BLUE",
+			"destinationPort" : "7",
+            "redirectVPortTagID" : "ID:redirectiontargettemplates.Red",
+			
+            "locationType"   : "ZONE",    // source
+            "locationID"     : "ID:zonetemplates.User VMs",
+            "networkType"  : "ANY",   // destination
+            "etherType"    : "0x0800",
+			"DSCP"         : "*",
+			"protocol"     : "6",   // TCP
+            "sourcePort"   : "*",
+			"action"       : "REDIRECT",
+			"statsLoggingEnabled" : true			
+          },
+		  {
+            "priority"      : 710,
+            "description"   : "Redirect TCP port 7 to RED + BLUE",
+			"destinationPort" : "7",
+            "redirectVPortTagID" : "ID:redirectiontargettemplates.Blue",
+			
+            "locationType"   : "POLICYGROUP",    // source
+            "locationID"     : "ID:policygrouptemplates.Red",
+            "networkType"  : "ANY",   // destination
+            "etherType"    : "0x0800",
+			"DSCP"         : "*",
+			"protocol"     : "6",   // TCP
+            "sourcePort"   : "*",
+			"action"       : "REDIRECT",
+			"statsLoggingEnabled" : true			
+          },
+		 
+		  {
+            "priority"      : 800,
+            "description"   : "Redirect TCP port 8 to RED + GREEN + BLUE",
+			"destinationPort" : "8",
+            "redirectVPortTagID" : "ID:redirectiontargettemplates.Red",
+			
+            "locationType"   : "ZONE",    // source
+            "locationID"     : "ID:zonetemplates.User VMs",
+            "networkType"  : "ANY",   // destination
+            "etherType"    : "0x0800",
+			"DSCP"         : "*",
+			"protocol"     : "6",   // TCP
+            "sourcePort"   : "*",
+			"action"       : "REDIRECT",
+			"statsLoggingEnabled" : true			
+          },
+		  {
+            "priority"      : 810,
+            "description"   : "Redirect TCP port 8 to RED + GREEN + BLUE",
+			"destinationPort" : "8",
+            "redirectVPortTagID" : "ID:redirectiontargettemplates.Green",
+			
+            "locationType"   : "POLICYGROUP",    // source
+            "locationID"     : "ID:policygrouptemplates.Red",
+            "networkType"  : "ANY",   // destination
+            "etherType"    : "0x0800",
+			"DSCP"         : "*",
+			"protocol"     : "6",   // TCP
+            "sourcePort"   : "*",
+			"action"       : "REDIRECT",
+			"statsLoggingEnabled" : true			
+          },
+		  {
+            "priority"      : 820,
+            "description"   : "Redirect TCP port 8 to RED + GREEN + BLUE",
+			"destinationPort" : "8",
+            "redirectVPortTagID" : "ID:redirectiontargettemplates.Blue",
+			
+            "locationType"   : "POLICYGROUP",    // source
+            "locationID"     : "ID:policygrouptemplates.Green",
+            "networkType"  : "ANY",   // destination
+            "etherType"    : "0x0800",
+			"DSCP"         : "*",
+			"protocol"     : "6",   // TCP
+            "sourcePort"   : "*",
+			"action"       : "REDIRECT",
+			"statsLoggingEnabled" : true			
+          }
+         ]
+        }
+   ]
+
+  }
+ ],
+ 
+ "domains" : [
+   { "name" : "Service Chainbow Domain",  "templateID" : "ID:domaintemplates.Service Chainbow template",
+     "underlayEnabled" : "ENABLED", "PATEnabled" : "ENABLED" 
+   }
+ ],
+ 
+ "vms" : [
+  { "name" : "Red", "image" : "GRML", "flavor" : "Cloudimage", "vnics" : [ "Service Chainbow Domain#colors#192.168.0.2" ] },
+  { "name" : "Green", "image" : "GRML", "flavor" : "Cloudimage", "vnics" : [ "Service Chainbow Domain#colors#192.168.0.3" ] },
+  { "name" : "Blue", "image" : "GRML", "flavor" : "Cloudimage", "vnics" : [ "Service Chainbow Domain#colors#192.168.0.4" ] },
+  
+  { "name" : "Painter", "image" : "GRML", "flavor" : "Cloudimage", "vnics" : [ "Service Chainbow Domain#users" ] }
+  
+  // ,{ "name" : "Canvas", "image" : "Ubuntu Trusty Cloudimage", "flavor" : "NSG-V", "vnics" : [ "Service Chainbow Domain#rainbow" ] }
+  
+ ]
+ 
+}

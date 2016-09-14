@@ -1,0 +1,51 @@
+/**
+ * This testcase launches an additional VM to act as "virtual firewall"
+ *
+ * Manual steps required:
+ * + Assign the redirect target created below to the correct vnics
+ * + Enable IP forwarding inside the VFW VM
+ */
+
+{
+ "parameters" : {
+ },
+
+ "domaintemplates" : [
+ {
+  "name" : "Overlay template",
+  
+  // Include the zone names such that we can reference them in the policies below
+  "zonetemplates" : [ { "name" : "DC Site A" },  { "name" : "DC Site B" }, { "name" : "Remote Site" } ],
+  
+  "redirectiontargettemplates" : [
+     { "name" : "Virtual Firewall", "description" : "non-redundant L3 redirection target for a VM to be marked as VFW", "endPointType" : "L3", "redundancyEnabled" : false }
+  ],
+  
+  "ingressadvfwdtemplates" : [
+   { "name" : "Service chain test case",
+     "active" : true,
+	 "ingressadvfwdentrytemplates" : [
+	  {
+	    "priority" 		: 100,
+		"description"	: "Redirect IP traffic via the VFW",
+		"locationType"	: "ZONE",    // source
+		"locationID"	: "ID:zonetemplates.DC Site A",
+		"networkType"	: "ZONE",    // destination
+		"networkID"		: "ID:zonetemplates.Remote Site",
+		"etherType"    : "0x0800",
+        "DSCP"         : "*",
+        "protocol"     : "ANY",	// Any IP protocol
+		"action"		: "REDIRECT",
+		"redirectVPortTagID" : "ID:redirectiontargettemplates.Virtual Firewall"
+	  }
+	 ]
+	}
+   ]
+  }
+ ], // domaintemplates
+  
+ "vms" : [
+  { "name" : "vfw", "image" : "GRML", "flavor" : "Cloudimage", "vnics" : [ "VPN Overlay#vms#172.16.1.3" ] }
+ ]
+ 
+}
