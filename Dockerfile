@@ -13,7 +13,7 @@ RUN apt-get update && \
   add-apt-repository cloud-archive:kilo && \
   curl --silent --location https://deb.nodesource.com/setup_0.12 | sudo bash - && \
   apt-get -y --force-yes --no-install-recommends install nodejs git python-neutronclient python-glanceclient python-novaclient make && \
-  apt-get remove -y curl wget make git && rm -rf /var/lib/apt/lists/* && apt-get clean all
+  apt-get clean all
 
 RUN npm install --prefix $base_path superagent agentkeepalive netmask express netmask body-parser multer cjson aws-sdk
 
