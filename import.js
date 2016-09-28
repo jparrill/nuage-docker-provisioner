@@ -39,6 +39,7 @@ if ( args[2] ) {
 
 var doDelete = false;	// TODO implement
 var runWebservice = false
+var apiErrors = 0;
 
 if ( vsd_ip && enterprise && jsonFile ) {
   console.log( "VSD IP: " + vsd_ip + " Organization:" + enterprise + " JSON file:" + jsonFile );
@@ -178,7 +179,7 @@ function doExit() {
 		   ++exitCode;
 		}
 		if (!runWebservice) {
-		   console.info( "doExit: exiting nesting=" + nesting );
+       console.info( "doExit: exiting nesting=" + nesting + " API errors=" + apiErrors );
 		   api.print_stats();
 		   process.exit( exitCode );
 		}
@@ -380,14 +381,21 @@ function resolveStr( val, context, callback )
 	  // template["ID.base"] = p_set
 
 	  if ( to_resolve[ obj ] == null ) {
-		to_resolve[ obj ] = {
-		   "key" : obj,
-		   "recurse" : 0,
-		   "waiting" : []  // Array of context objects
-		}
+  		to_resolve[ obj ] = {
+  		   "key" : obj,
+  		   "recurse" : 0,
+  		   "waiting" : []  // Array of context objects
+  		}
 	  }
 	  context.callback = callback;
 	  to_resolve[ obj ].waiting.push( context )
+
+    // Support implicit lookups by name; trigger a GET
+	  ++nesting;
+	  api.get( "/" + p_set, "name == '" + p_name + "'", function (named_obj) {
+		onResponse( { set : p_set }, named_obj[0] );
+		if ( --nesting==0 ) doExit();
+	  }, onError );
 
 	  console.log( "Resolution postponed for " + val )
   } else {
@@ -433,6 +441,7 @@ function zeropad(num, size) {
 
 function onError(err) {
 	console.error( "Error response from API call: " + JSON.stringify(err) );
+  ++apiErrors;
 	if ( --nesting==0 ) doExit()
 }
 
@@ -1113,7 +1122,7 @@ child = exec('[ "'+enterprise+'" = "csp" ] || neutron nuage-netpartition-create 
 		} else {
 			api.get( "/enterprises", "name == '"+enterprise+"'", function(enterprises) {
 				// console.log( res )
-				if (enterprises) {
+        if (enterprises && enterprises[0]) {
 					enterprise_id = enterprises[0].ID;		// GLOBAL
 					processTemplate( template );
 				} else {
