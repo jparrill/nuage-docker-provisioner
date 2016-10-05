@@ -393,7 +393,7 @@ function resolveStr( val, context, callback )
     // Support implicit lookups by name; trigger a GET
 	  ++nesting;
 	  api.get( "/" + p_set, "name == '" + p_name + "'", function (named_obj) {
-		onResponse( { set : p_set }, named_obj[0] );
+                if (named_obj[0]) onResponse( { set : p_set }, named_obj[0] );
 		if ( --nesting==0 ) doExit();
 	  }, onError );
 
